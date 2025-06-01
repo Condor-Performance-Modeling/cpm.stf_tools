@@ -6,8 +6,8 @@ set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Boost
-find_package (Boost 1.49.0)
+find_package (Boost 1.78.0 REQUIRED COMPONENTS program_options json)
+message (STATUS "Using BOOST ${Boost_VERSION_STRING}")
 find_package (RapidJSON REQUIRED)
 include_directories (SYSTEM ${Boost_INCLUDE_DIRS} ${RapidJSON_INCLUDE_DIR})
 
