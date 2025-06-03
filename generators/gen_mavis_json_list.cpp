@@ -50,7 +50,7 @@ std::vector<std::string> getJSONs(const char* arch_size) {
                      const auto& json_path = f.path();
                      return fs::is_regular_file(f.status()) &&
                             json_path.extension() == ".json" &&
-                            json_path.filename().string().find(arch_size) != std::string::npos;
+                            json_path.filename().string().find(std::string("isa_rv") + arch_size) != std::string::npos;
                  });
 
     std::sort(mavis_json_files.begin(),
