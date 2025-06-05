@@ -2,11 +2,11 @@
     path = ELFIO
     url = git@github.com:serge1/ELFIO.git
 [submodule "dtl"]
-	path = dtl
-	url = git@github.com:cubicdaiya/dtl.git
+    path = dtl
+    url = git@github.com:cubicdaiya/dtl.git
 [submodule "cpm.mavis"]
-	path = cpm.mavis
-	url = git@github.com:Condor-Performance-Modeling/cpm.mavis
+    path = cpm.mavis
+    url = git@github.com:Condor-Performance-Modeling/cpm.mavis
 [submodule "cpm.stf_lib"]
-	path = cpm.stf_lib
-	url = git@github.com:Condor-Performance-Modeling/cpm.stf_lib
+    path = cpm.stf_lib
+    url = git@github.com:Condor-Performance-Modeling/cpm.stf_lib

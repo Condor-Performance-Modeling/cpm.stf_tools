@@ -2,6 +2,7 @@
 
 #include <limits>
 #include <ostream>
+#include <boost/json.hpp>
 #include <mavis/Mavis.h>
 #include "mavis_json_files.hpp"
 #include "stf_enum_utils.hpp"
@@ -339,8 +340,8 @@ namespace mavis_helpers {
 
             DummyAnnotationType() = default;
             DummyAnnotationType(const DummyAnnotationType&) = default;
-            explicit DummyAnnotationType(const nlohmann::json& inst) {}
-            void update(const nlohmann::json& inst) const {}
+            explicit DummyAnnotationType(const boost::json::object& inst) {}
+            void update(const boost::json::object& inst) const {}
 
             /**
              * Writes an DummyAnnotationType out to an std::ostream. Just a stub for now.
@@ -367,29 +368,30 @@ namespace mavis_helpers {
 
             AnnotationType() = default;
             AnnotationType(const AnnotationType&) = default;
-            explicit AnnotationType(const nlohmann::json& inst) {
+            explicit AnnotationType(const boost::json::object& inst) {
                 update(inst);
             }
 
-            inline void update(const nlohmann::json& inst) {
+            inline void update(const boost::json::object& inst) {
                 auto mnemonic_it = inst.find("mnemonic");
-                stf_assert(mnemonic_it != inst.end(), "Failed to find mnemonic for instruction: " << inst.dump());
+                stf_assert(mnemonic_it != inst.end(), "Failed to find mnemonic for instruction: " << boost::json::serialize(inst));
 
                 auto form_it = inst.find("form");
 
                 if(form_it == inst.end()) {
                     auto overlay_it = inst.find("overlay");
-                    stf_assert(overlay_it != inst.end(), "Failed to find overlay for form-less instruction: " << inst.dump());
-                    auto parent_mnemonic_it = overlay_it->find("base");
-                    stf_assert(parent_mnemonic_it != overlay_it->end(), "Failed to find base in overlay for instruction: " << inst.dump());
-                    auto parent_form_it = mnemonic_map_.find(*parent_mnemonic_it);
-                    stf_assert(parent_form_it != mnemonic_map_.end(), "Failed to find mnemonic in map for instruction: " << inst.dump());
+                    stf_assert(overlay_it != inst.end(), "Failed to find overlay for form-less instruction: " << boost::json::serialize(inst));
+                    const boost::json::object overlay_obj = overlay_it->value().as_object();
+                    auto parent_mnemonic_it = overlay_obj.find("base");
+                    stf_assert(parent_mnemonic_it != overlay_obj.end(), "Failed to find base in overlay for instruction: " << boost::json::serialize(inst));
+                    auto parent_form_it = mnemonic_map_.find(boost::json::value_to<std::string>(parent_mnemonic_it->value()));
+                    stf_assert(parent_form_it != mnemonic_map_.end(), "Failed to find mnemonic in map for instruction: " << boost::json::serialize(inst));
                     form_ = mavis::FormRegistry::getFormWrapper(parent_form_it->second);
-                    mnemonic_map_.try_emplace(*mnemonic_it, parent_form_it->second);
+                    mnemonic_map_.try_emplace(boost::json::value_to<std::string>(mnemonic_it->value()), parent_form_it->second);
                 }
                 else {
-                    form_ = mavis::FormRegistry::getFormWrapper(*form_it);
-                    mnemonic_map_.try_emplace(*mnemonic_it, *form_it);
+                    form_ = mavis::FormRegistry::getFormWrapper(boost::json::value_to<std::string>(form_it->value()));
+                    mnemonic_map_.try_emplace(boost::json::value_to<std::string>(mnemonic_it->value()), boost::json::value_to<std::string>(form_it->value()));
                 }
             }
 
