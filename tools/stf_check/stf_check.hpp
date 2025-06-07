@@ -42,6 +42,7 @@ enum class ErrorCode : uint8_t {
     MEM_POINT_TO_ZERO   = 19,   // store write to vaddr zero
     DECODER_FAILURE     = 20,   // decoder failed to recognize an instruction
     PC_DISCONTINUITY    = 21,   // pc jumps to the wrong address
+    MULTI_OPCODE_PC     = 22,   // pc with multiple opcodes
     RESERVED_NUM_ERRORS
 };
 
@@ -118,6 +119,9 @@ inline std::ostream& operator<<(std::ostream& os, const ErrorCode code) {
         case ErrorCode::PC_DISCONTINUITY:
             os << "PC_DISCONTINUITY";
             return os;
+        case ErrorCode::MULTI_OPCODE_PC:
+            os << "MULTI_OPCODE_PC";
+            return os;
         case ErrorCode::RESERVED_NUM_ERRORS:
             break;
     };
@@ -151,7 +155,8 @@ inline ErrorCode parseErrorCode(const std::string_view err_code_str) {
         PARSER_ENTRY(SWITCH_USR),
         PARSER_ENTRY(MEM_POINT_TO_ZERO),
         PARSER_ENTRY(DECODER_FAILURE),
-        PARSER_ENTRY(PC_DISCONTINUITY)
+        PARSER_ENTRY(PC_DISCONTINUITY),
+        PARSER_ENTRY(MULTI_OPCODE_PC)
     };
 
     const auto it = string_map.find(err_code_str);
@@ -494,7 +499,8 @@ inline const std::map<ErrorCode, const char*> ErrorTracker::error_code_msgs_ = {
     {ErrorCode::UNCOND_BR, "unconditional branch instr does not have PC target"},
     {ErrorCode::SWITCH_USR, "switch to user mode wihtout sret/mret instr"},
     {ErrorCode::MEM_POINT_TO_ZERO, "Memory records point to virtual address zero"},
-    {ErrorCode::PC_DISCONTINUITY, "PC jumps to the wrong address"}
+    {ErrorCode::PC_DISCONTINUITY, "PC jumps to the wrong address"},
+    {ErrorCode::MULTI_OPCODE_PC, "PC with mutiple opcodes"}
 };
 
 /**
