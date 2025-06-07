@@ -144,6 +144,14 @@ int main (int argc, char **argv) {
         ThreadMap thread_pc_prev;
         ThreadMapKey thread_id;
 
+        // Keep track of the opcodes at each PC
+        using Pc = uint64_t;
+        using Opcode = uint32_t;
+        using Count = uint64_t;
+        using OpcodeMap = std::map<Opcode, Count>;
+        using PcMap = std::map<Pc, OpcodeMap>;
+        PcMap pc_map;
+
         // Open stf trace reader
         stf::STFInstReader stf_reader(config.trace_filename, config.skip_non_user, config.check_phys_addr);
         stf::STFDecoder decoder(stf_reader.getInitialIEM());
@@ -312,6 +320,15 @@ int main (int argc, char **argv) {
                     msg << std::endl;
                 }
             }
+
+            // Keep track of the opcodes at each PC
+            auto pc_map_pair = pc_map.try_emplace(inst.pc(), OpcodeMap());
+            auto pc_map_itr = pc_map_pair.first;
+            auto& opcode_map = pc_map_itr->second;     
+            auto opcode_map_pair = opcode_map.try_emplace(inst.opcode(), 0);       
+            auto opcode_map_itr = opcode_map_pair.first;
+            auto& count = opcode_map_itr->second;
+            ++count;
 
             if(STF_EXPECT_FALSE(inst_count > 1 && inst.pc() != (inst_prev.pc() + inst_prev.opcodeSize()))) {
                 bool valid_jump = false;
@@ -527,6 +544,28 @@ int main (int argc, char **argv) {
             }
         }
 
+        // Check for PCs with multiple opcodes
+        for (const auto& pc_map_pair : pc_map) {
+            const uint64_t pc = pc_map_pair.first;
+            const OpcodeMap& opcode_map = pc_map_pair.second;
+            if (opcode_map.size() > 1) {
+                ecount.countError(ErrorCode::MULTI_OPCODE_PC);
+                auto& msg = ecount.reportError(ErrorCode::MULTI_OPCODE_PC);
+                msg << "Found PC ";
+                stf::format_utils::formatVA(msg, pc);
+                msg << " with multiple opcodes: count/opcode ";
+                for (const auto& opcode_map_pair : opcode_map) {
+                    const uint32_t opcode = opcode_map_pair.first;
+                    const uint64_t count = opcode_map_pair.second;
+                    stf::format_utils::formatDec(msg, count);
+                    msg << "/";
+                    stf::format_utils::formatHex(msg, opcode, 8);
+                    msg << " ";
+                }
+                msg << std::endl;
+            }
+        }
+        
         // Print a summary of findings.
         if (config.print_info) {
             stf::print_utils::printDec(embed_pte_count);
