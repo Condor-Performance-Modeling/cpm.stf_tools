@@ -34,15 +34,25 @@ enum class ErrorCode : uint8_t {
     RV64_INSTS          = 11,   // stf contains/doesn't contain RV64 instructions when it should/shouldn't
     MEM_ATTR            = 12,   // instruction accesses memory but missing access attribute record
     PREFETCH            = 13,   // prefetch instruction does not have data virtual address
-    MISS_MEM            = 14,   // missing memory access record
-    MISS_MEM_LOAD       = 15,   // missing memory access record for load
-    MISS_MEM_STR        = 16,   // missing memory access record for store
-    UNCOND_BR           = 17,   // unconditional branch instr does not have PC target
-    SWITCH_USR          = 18,   // switch to user mode wihtout sret/mret instr
-    MEM_POINT_TO_ZERO   = 19,   // store write to vaddr zero
-    DECODER_FAILURE     = 20,   // decoder failed to recognize an instruction
-    PC_DISCONTINUITY    = 21,   // pc jumps to the wrong address
-    MULTI_OPCODE_PC     = 22,   // pc with multiple opcodes
+    LD_DEC_TYPE_DIS     = 14,   // Instruction and decoder disagree on whether this is a load
+    LD_EV_WITH_MEM      = 15,   // Load with an event has mem records
+    LD_MASK_WITH_MEM    = 16,   // Masked vector load has mem records
+    LD_NO_MEM           = 17,   // Load with no mem records
+    LD_MULTI_MEM        = 18,   // Load with multiple mem records
+    LD_MEM_SIZE_DIS     = 19,   // Load where decoder and mem record disagree on transaction size
+    ST_DEC_TYPE_DIS     = 20,   // Instruction and decoder disagree on whether this is a store
+    ST_EV_WITH_MEM      = 21,   // Store with an event has mem records
+    ST_MASK_WITH_MEM    = 22,   // Masked vector store has mem records
+    ST_NO_MEM           = 23,   // Store with no mem records
+    ST_MULTI_MEM        = 24,   // Store with multiple mem records
+    ST_MEM_SIZE_DIS     = 25,   // Store where decoder and mem record disagree on transaction size
+    BR_DEC_TYPE_DIS     = 26,   // Instruction and decoder disagree on whether this is a branch
+    BR_UNCOND           = 27,   // unconditional branch instr does not have PC target
+    SWITCH_USR          = 28,   // switch to user mode wihtout sret/mret instr
+    MEM_POINT_TO_ZERO   = 29,   // store write to vaddr zero
+    DECODER_FAILURE     = 30,   // decoder failed to recognize an instruction
+    PC_DISCONTINUITY    = 31,   // pc jumps to the wrong address
+    MULTI_OPCODE_PC     = 32,   // pc with multiple opcodes
     RESERVED_NUM_ERRORS
 };
 
@@ -95,17 +105,47 @@ inline std::ostream& operator<<(std::ostream& os, const ErrorCode code) {
         case ErrorCode::PREFETCH:
             os << "PREFETCH";
             return os;
-        case ErrorCode::MISS_MEM:
-            os << "MISS_MEM";
+        case ErrorCode::LD_DEC_TYPE_DIS:  
+            os << "LD_DEC_TYPE_DIS";
             return os;
-        case ErrorCode::MISS_MEM_LOAD:
-            os << "MISS_MEM_LOAD";
+        case ErrorCode::LD_EV_WITH_MEM:
+            os << "LD_EV_WITH_MEM";
             return os;
-        case ErrorCode::MISS_MEM_STR:
-            os << "MISS_MEM_STR";
+        case ErrorCode::LD_MASK_WITH_MEM:
+            os << "LD_MASK_WITH_MEM";
             return os;
-        case ErrorCode::UNCOND_BR:
-            os << "UNCOND_BR";
+        case ErrorCode::LD_NO_MEM:
+            os << "LD_NO_MEM";
+            return os;
+        case ErrorCode::LD_MULTI_MEM:     
+            os << "LD_MULTI_MEM";
+            return os;
+        case ErrorCode::LD_MEM_SIZE_DIS:  
+            os << "LD_MEM_SIZE_DIS";
+            return os;
+        case ErrorCode::ST_DEC_TYPE_DIS:  
+            os << "ST_DEC_TYPE_DIS";
+            return os;
+        case ErrorCode::ST_EV_WITH_MEM:
+            os << "ST_EV_WITH_MEM";
+            return os;
+        case ErrorCode::ST_MASK_WITH_MEM:
+            os << "ST_MASK_WITH_MEM";
+            return os;
+        case ErrorCode::ST_NO_MEM:
+            os << "ST_NO_MEM";
+            return os;
+        case ErrorCode::ST_MULTI_MEM:     
+            os << "ST_MULTI_MEM";
+            return os;
+        case ErrorCode::ST_MEM_SIZE_DIS:  
+            os << "ST_MEM_SIZE_DIS";
+            return os;
+        case ErrorCode::BR_DEC_TYPE_DIS:
+            os << "BR_DEC_TYPE_DIS";
+            return os;
+        case ErrorCode::BR_UNCOND:
+            os << "BR_UNCOND";
             return os;
         case ErrorCode::SWITCH_USR:
             os << "SWITCH_USR";
@@ -148,10 +188,20 @@ inline ErrorCode parseErrorCode(const std::string_view err_code_str) {
         PARSER_ENTRY(RV64_INSTS),
         PARSER_ENTRY(MEM_ATTR),
         PARSER_ENTRY(PREFETCH),
-        PARSER_ENTRY(MISS_MEM),
-        PARSER_ENTRY(MISS_MEM_LOAD),
-        PARSER_ENTRY(MISS_MEM_STR),
-        PARSER_ENTRY(UNCOND_BR),
+        PARSER_ENTRY(LD_DEC_TYPE_DIS),
+        PARSER_ENTRY(LD_EV_WITH_MEM),
+        PARSER_ENTRY(LD_MASK_WITH_MEM),
+        PARSER_ENTRY(LD_NO_MEM),
+        PARSER_ENTRY(LD_MULTI_MEM),
+        PARSER_ENTRY(LD_MEM_SIZE_DIS),
+        PARSER_ENTRY(ST_DEC_TYPE_DIS),
+        PARSER_ENTRY(ST_EV_WITH_MEM),
+        PARSER_ENTRY(ST_MASK_WITH_MEM),
+        PARSER_ENTRY(ST_NO_MEM),
+        PARSER_ENTRY(ST_MULTI_MEM),
+        PARSER_ENTRY(ST_MEM_SIZE_DIS),
+        PARSER_ENTRY(BR_DEC_TYPE_DIS),
+        PARSER_ENTRY(BR_UNCOND),
         PARSER_ENTRY(SWITCH_USR),
         PARSER_ENTRY(MEM_POINT_TO_ZERO),
         PARSER_ENTRY(DECODER_FAILURE),
@@ -493,10 +543,20 @@ inline const std::map<ErrorCode, const char*> ErrorTracker::error_code_msgs_ = {
     {ErrorCode::RV64_INSTS, "stf contains/doesn't contain RV64 instructions when it should/shouldn't"},
     {ErrorCode::MEM_ATTR, "instruction accesses memory but missing access attribute record"},
     {ErrorCode::PREFETCH, "prefetch instruction does not have data virtual address"},
-    {ErrorCode::MISS_MEM, "missing memory access record"},
-    {ErrorCode::MISS_MEM_LOAD, "missing memory access record for load"},
-    {ErrorCode::MISS_MEM_STR, "missing memory access record for store"},
-    {ErrorCode::UNCOND_BR, "unconditional branch instr does not have PC target"},
+    {ErrorCode::LD_DEC_TYPE_DIS, "Instruction and decoder disagree on whether this is a load"},
+    {ErrorCode::LD_EV_WITH_MEM, "Load with an event has mem records"},
+    {ErrorCode::LD_MASK_WITH_MEM, "Masked vector load has mem records"},
+    {ErrorCode::LD_NO_MEM, "Load with no mem records"},
+    {ErrorCode::LD_MULTI_MEM, "Load with multiple mem records"},
+    {ErrorCode::LD_MEM_SIZE_DIS, "Load where decoder and mem record disagree on transaction size"},
+    {ErrorCode::ST_DEC_TYPE_DIS, "Instruction and decoder disagree on whether this is a store"},
+    {ErrorCode::ST_EV_WITH_MEM, "Store with an event has mem records"},
+    {ErrorCode::ST_MASK_WITH_MEM, "Masked vector store has mem records"},
+    {ErrorCode::ST_NO_MEM, "Store with no mem records"},
+    {ErrorCode::ST_MULTI_MEM, "Store with multiple mem records"},
+    {ErrorCode::ST_MEM_SIZE_DIS, "Store where decoder and mem record disagree on transaction size"},
+    {ErrorCode::BR_DEC_TYPE_DIS, "Instruction and decoder disagree on whether this is a branch"},
+    {ErrorCode::BR_UNCOND, "unconditional branch instr does not have PC target"},
     {ErrorCode::SWITCH_USR, "switch to user mode wihtout sret/mret instr"},
     {ErrorCode::MEM_POINT_TO_ZERO, "Memory records point to virtual address zero"},
     {ErrorCode::PC_DISCONTINUITY, "PC jumps to the wrong address"},

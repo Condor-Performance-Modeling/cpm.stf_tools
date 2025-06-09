@@ -241,58 +241,107 @@ int main (int argc, char **argv) {
                 msg << " Failed to decode instruction." << std::endl;
             }
 
-            //check if inst is_load or is_store and doesn't have memory accesses when it should
-            if (STF_EXPECT_FALSE(
-                    decoder.isLoad() && // it decodes as a load
-                    (!inst_prev.isLoad() || inst_prev.getMemoryReads().empty()) && // but it isn't doing any loads
-                    prev_events.empty())) { // and there are no events stopping it from doing a load
-                bool found = false;
+            // Check load, mem record, and decoder consistency
+            if (STF_EXPECT_FALSE(decoder.isLoad() != inst_prev.isLoad())) {
+                ecount.countError(ErrorCode::LD_DEC_TYPE_DIS);
+                auto& msg = ecount.reportError(ErrorCode::LD_DEC_TYPE_DIS);
+                stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                msg << " Instruction:" << inst_prev.isLoad() << " and decoder:" << decoder.isLoad() 
+                    << " disagree on whether this is a load" << std::endl;
+            }
+            if (STF_EXPECT_FALSE(decoder.isLoad() && inst_prev.isLoad())) {
                 // Commenting this out for now since RISC-V doesn't have software prefetches
-                /*
-                OpcodeList::iterator oit = pldOpcodes.begin();
-                for (;oit != pldOpcodes.end(); oit++) {
-                    if (oit->decodeOpcode(inst.opcode())) {
-                        found = true;
-                        break;
-                    }
-                }
-                */
-                // Check for special cases where all vector loads are masked
-                found = isVectorMemAccessMasked(inst_prev);
+                //OpcodeList::iterator oit = pldOpcodes.begin();
+                //for (;oit != pldOpcodes.end(); oit++) {
+                //    if (oit->decodeOpcode(inst.opcode())) {
+                //        found = true;
+                //        break;
+                //    }
+                //}
 
-                if(STF_EXPECT_FALSE(!found)) {
-                    ecount.countError(ErrorCode::MISS_MEM);
-                    ecount.countError(ErrorCode::MISS_MEM_LOAD);
-                    auto& msg = ecount.reportError(ErrorCode::MISS_MEM_LOAD);
+                const auto& mem_access_vect = inst_prev.getMemoryReads();
+                if (STF_EXPECT_FALSE(!prev_events.empty() && mem_access_vect.size() > 0)) {
+                    ecount.countError(ErrorCode::LD_EV_WITH_MEM);
+                    auto& msg = ecount.reportError(ErrorCode::LD_EV_WITH_MEM);
                     stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
-                    msg << " Load instruction missing memory access record in stf." << std::endl;
+                    msg << " Load with an event has mem records" << std::endl;
+                }
+                else if (STF_EXPECT_FALSE(isVectorMemAccessMasked(inst_prev) && mem_access_vect.size() > 0)) {
+                    ecount.countError(ErrorCode::LD_MASK_WITH_MEM);
+                    auto& msg = ecount.reportError(ErrorCode::LD_MASK_WITH_MEM);
+                    stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                    msg << " Masked vector load has mem records" << std::endl;
+                }
+                else if (STF_EXPECT_FALSE(mem_access_vect.size() == 0)) {
+                    ecount.countError(ErrorCode::LD_NO_MEM);
+                    auto& msg = ecount.reportError(ErrorCode::LD_NO_MEM);
+                    stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                    msg << " Load with no mem records" << std::endl;
+                }
+                else if (STF_EXPECT_FALSE(mem_access_vect.size() > 1)) {
+                    ecount.countError(ErrorCode::LD_MULTI_MEM);
+                    auto& msg = ecount.reportError(ErrorCode::LD_MULTI_MEM);
+                    stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                    msg << " Load with multiple mem records" << std::endl;
+                }
+                else if (STF_EXPECT_FALSE(mem_access_vect[0].getSize() != decoder.getDataSize() / 8)) {
+                    ecount.countError(ErrorCode::LD_MEM_SIZE_DIS);
+                    auto& msg = ecount.reportError(ErrorCode::LD_MEM_SIZE_DIS);
+                    stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                    msg << " Load where decoder:" << decoder.getDataSize() / 8 << " and mem record:" 
+                        << mem_access_vect[0].getSize() << " disagree on transaction size" << std::endl;
                 }
             }
-            if (STF_EXPECT_FALSE(
-                    decoder.isStore() && // it decodes as a store
-                    (!inst_prev.isStore() || inst_prev.getMemoryWrites().empty()) && // but it isn't doing any stores
-                    prev_events.empty() && // and there are no events stopping it from doing a store
-                    !decoder.isAtomic())) { // and this isn't an atomic inst (store-conditional)
-                bool found = false;
-                // Commenting this out for now since RISC-V doesn't have software prefetches
-                /*
-                OpcodeList::iterator oit = pldOpcodes.begin();
-                for (;oit != pldOpcodes.end(); oit++) {
-                    if (oit->decodeOpcode(inst.opcode())) {
-                        found = true;
-                        break;
-                    }
-                }
-                */
-                // Check for special cases where all vector stores are masked
-                found = isVectorMemAccessMasked(inst_prev);
 
-                if (!found) {
-                    ecount.countError(ErrorCode::MISS_MEM);
-                    ecount.countError(ErrorCode::MISS_MEM_STR);
-                    auto& msg = ecount.reportError(ErrorCode::MISS_MEM_STR);
+            // Check store, mem record, and decoder consistency
+            if (STF_EXPECT_FALSE(decoder.isStore() != inst_prev.isStore())) {
+                ecount.countError(ErrorCode::ST_DEC_TYPE_DIS);
+                auto& msg = ecount.reportError(ErrorCode::ST_DEC_TYPE_DIS);
+                stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                msg << " Instruction:" << inst_prev.isStore() << " and decoder:" << decoder.isStore() 
+                    << " disagree on whether this is a store" << std::endl;
+            }
+            if (STF_EXPECT_FALSE(decoder.isStore() && inst_prev.isStore())) {
+                // Commenting this out for now since RISC-V doesn't have software prefetches
+                //OpcodeList::iterator oit = pldOpcodes.begin();
+                //for (;oit != pldOpcodes.end(); oit++) {
+                //    if (oit->decodeOpcode(inst.opcode())) {
+                //        found = true;
+                //        break;
+                //    }
+                //}
+
+                const auto& mem_access_vect = inst_prev.getMemoryWrites();
+                if (STF_EXPECT_FALSE(!prev_events.empty() && mem_access_vect.size() > 0)) {
+                    ecount.countError(ErrorCode::ST_EV_WITH_MEM);
+                    auto& msg = ecount.reportError(ErrorCode::ST_EV_WITH_MEM);
                     stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
-                    msg << " Store instruction missing memory access record in stf." << std::endl;
+                    msg << " store with an event has mem records" << std::endl;
+                }
+                else if (STF_EXPECT_FALSE(isVectorMemAccessMasked(inst_prev) && mem_access_vect.size() > 0)) {
+                    ecount.countError(ErrorCode::ST_MASK_WITH_MEM);
+                    auto& msg = ecount.reportError(ErrorCode::ST_MASK_WITH_MEM);
+                    stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                    msg << " Masked vector store has mem records" << std::endl;
+                }
+                else if (STF_EXPECT_FALSE(mem_access_vect.size() == 0)) {
+                    ecount.countError(ErrorCode::ST_NO_MEM);
+                    auto& msg = ecount.reportError(ErrorCode::ST_NO_MEM);
+                    stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                    msg << " store with no mem records" << std::endl;
+                }
+                else if (STF_EXPECT_FALSE(mem_access_vect.size() > 1)) {
+                    ecount.countError(ErrorCode::ST_MULTI_MEM);
+                    auto& msg = ecount.reportError(ErrorCode::ST_MULTI_MEM);
+                    stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                    msg << " store with multiple mem records" << std::endl;
+                }
+                else if (STF_EXPECT_FALSE(mem_access_vect[0].getSize() != decoder.getDataSize() / 8)) {
+                    ecount.countError(ErrorCode::ST_MEM_SIZE_DIS);
+                    auto& msg = ecount.reportError(ErrorCode::ST_MEM_SIZE_DIS);
+                    stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                    msg << " store where decoder:" << decoder.getDataSize() / 8 << " and mem record:" 
+                        << mem_access_vect[0].getSize() << " disagree on transaction size" << std::endl;
                 }
             }
 
@@ -450,13 +499,22 @@ int main (int argc, char **argv) {
             // Check for embedded PTEs
             embed_pte_count += inst.getEmbeddedPTEs().size();
 
+            // Check branch and decoder consistency
+            if (STF_EXPECT_FALSE(decoder.isBranch() ^ inst_prev.isBranch())) {
+                ecount.countError(ErrorCode::BR_DEC_TYPE_DIS);
+                auto& msg = ecount.reportError(ErrorCode::BR_DEC_TYPE_DIS);
+                stf::format_utils::formatDecLeft(msg, inst.index(), MAX_COUNT_LENGTH);
+                msg << " Instruction:" << inst_prev.isBranch() << " and decoder:" << decoder.isBranch() 
+                    << " disagree on whether this is a branch" << std::endl;
+            }
+
             // check if unconditional branch contains PC_TARGET
             // If last instruction is an unconditional branch, it will not have PC TARGET.
             if (STF_EXPECT_TRUE(!thread_switch)) {
                 if (STF_EXPECT_FALSE(decoder.isBranch() && !decoder.isConditional())) {
                     if (STF_EXPECT_FALSE(prev_events.empty() && (!inst_prev.isTakenBranch()))) {
-                        ecount.countError(ErrorCode::UNCOND_BR);
-                        auto& msg = ecount.reportError(ErrorCode::UNCOND_BR);
+                        ecount.countError(ErrorCode::BR_UNCOND);
+                        auto& msg = ecount.reportError(ErrorCode::BR_UNCOND);
                         stf::format_utils::formatDecLeft(msg, inst_prev.index(), MAX_COUNT_LENGTH);
                         msg << " 0x";
                         stf::format_utils::formatVA(msg, inst_prev.pc());
@@ -551,9 +609,9 @@ int main (int argc, char **argv) {
             if (opcode_map.size() > 1) {
                 ecount.countError(ErrorCode::MULTI_OPCODE_PC);
                 auto& msg = ecount.reportError(ErrorCode::MULTI_OPCODE_PC);
-                msg << "Found PC ";
+                msg << "PC ";
                 stf::format_utils::formatVA(msg, pc);
-                msg << " with multiple opcodes: count/opcode ";
+                msg << " has multiple opcodes: count/opcode ";
                 for (const auto& opcode_map_pair : opcode_map) {
                     const uint32_t opcode = opcode_map_pair.first;
                     const uint64_t count = opcode_map_pair.second;
