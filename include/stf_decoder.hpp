@@ -334,6 +334,18 @@ namespace stf {
             }
 
             /**
+             * Returns the data size associated with the opcode
+             */
+            inline uint32_t getDataSize() const {
+                try {
+                    return getDecodeInfo_()->opinfo->getDataSize();
+                }
+                catch(const InvalidInstException&) {
+                    return 0;
+                }
+            }
+  
+            /**
              * Returns whether the decoded instruction is a branch
              */
             inline bool isBranch() const {
