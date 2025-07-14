@@ -453,6 +453,9 @@ int main(int argc, char** argv) {
     }
     
     if(btb_index) {
+        std::map<uint64_t, uint64_t> btb_all_unique_hist;
+        std::map<uint64_t, uint64_t> btb_cond_unique_hist;        
+        std::map<uint64_t, uint64_t> targets;
         std::cout << std::endl;
         stf::print_utils::printLeft("Index", 6);
         stf::print_utils::printLeft("All Allocs", COLUMN_WIDTH);
@@ -468,6 +471,8 @@ int main(int argc, char** argv) {
         stf::print_utils::printLeft("Cond Hits", COLUMN_WIDTH);
         std::cout << std::endl;
         for (uint64_t i=0; i<1024; i++) {
+            btb_all_unique_hist[btb_all.getNumUniquePCs(i)]++;
+            btb_cond_unique_hist[btb_cond.getNumUniquePCs(i)]++;
             stf::print_utils::printDecLeft(i, 6);
             stf::print_utils::printDecLeft(btb_all.getAllocations(i), COLUMN_WIDTH);
             if (btb_all.getAllocations(i)!=0) {
@@ -486,6 +491,25 @@ int main(int argc, char** argv) {
             }
             std::cout << std::endl;
         }
+        std::cout << std::endl << "Histogram of unique branch PCs sharing BTB indices" << std::endl;
+        stf::print_utils::printLeft("Unique branch PCs per BTB Index", 30);
+        stf::print_utils::printLeft("BTB Indices Count", 20);
+        std::cout << std::endl;
+        for (const auto& pair : btb_all_unique_hist) {
+            stf::print_utils::printDecLeft(pair.first, 30);
+            stf::print_utils::printDecLeft(pair.second, 20);
+            std::cout << std::endl;
+        }
+        std::cout << std::endl << "Histogram of unique conditional branch PCs sharing BTB indices" << std::endl;
+        stf::print_utils::printLeft("Unique conditional branch PCs per BTB Index", 30);
+        stf::print_utils::printLeft("BTB Indices Count", 20);
+        std::cout << std::endl;
+        for (const auto& pair : btb_cond_unique_hist) {
+            stf::print_utils::printDecLeft(pair.first, 30);
+            stf::print_utils::printDecLeft(pair.second, 20);
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
     }
     return 0;
 }
