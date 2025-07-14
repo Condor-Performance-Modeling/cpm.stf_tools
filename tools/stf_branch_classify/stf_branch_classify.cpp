@@ -108,11 +108,14 @@ struct BranchInfo {
     uint64_t sequential_not_taken = 0;
     uint64_t max_sequential_taken = 0;
     uint64_t max_sequential_not_taken = 0;
+    uint64_t local_dir_history = 0;
     std::map<uint64_t, uint64_t> targets;
     std::map<uint64_t, uint64_t> precedents;
     std::map<uint64_t, uint64_t> pre_precedents;
     std::map<uint64_t, uint64_t> taken_precedents;
     std::map<uint64_t, uint64_t> indirect_precedents;
+    std::map<uint64_t, uint64_t> taken_local_histories;
+    std::map<uint64_t, uint64_t> not_taken_local_histories;
     bool previous_taken = false;
     bool stable_seq_taken = true;
     bool indirect = false;
@@ -156,7 +159,7 @@ int main(int argc, char** argv) {
 
         const bool is_taken = branch.isTaken();
 
-        if ((branch_info.taken == 0) && !is_taken) {
+        if ((branch_info.taken == 0) && !is_taken) {  // Branch has not yet been taken
             branch_info.not_taken_prefix++;
             all_total_prefix++;
             //continue;
@@ -217,7 +220,7 @@ int main(int argc, char** argv) {
             branch_info.direction = new_dir;
         }
         else if(branch_info.direction != new_dir) {
-            stf_assert(branch_info.indirect, "Only indirect branches can have multiple directions");
+            stf_assert(branch_info.indirect, "Only multi-target indirect branches can have multiple directions");
             branch_info.direction = Direction::MULTIPLE;
         }
 
@@ -241,6 +244,13 @@ int main(int argc, char** argv) {
         else if(branch_info.type != new_type) {
             branch_info.type = BranchType::ERROR;
         }
+
+        if (branch_info.type == BranchType::CONDITIONAL) {
+            if (is_taken) branch_info.taken_local_histories[(branch_info.local_dir_history & 65535)]++;
+            else branch_info.not_taken_local_histories[(branch_info.local_dir_history & 65535)]++;
+        }
+        branch_info.local_dir_history = (branch_info.local_dir_history<<1) | (is_taken & 0x1);
+
         all_total++;
     }
 
@@ -259,7 +269,7 @@ int main(int argc, char** argv) {
     uint64_t limit = int(0.98*(double)(all_total-all_total_prefix));
     bool limit_reached = false;
 
-    static constexpr int COLUMN_WIDTH = 17;
+    static constexpr int COLUMN_WIDTH = 18;
     stf::print_utils::printLeft("Rank", 6);
     stf::print_utils::printLeft("Instr PC", COLUMN_WIDTH);
     stf::print_utils::printLeft("Type/Behav", 12);
@@ -274,6 +284,9 @@ int main(int argc, char** argv) {
     stf::print_utils::printLeft("Direction", 12);
     stf::print_utils::printLeft("Total Instances", COLUMN_WIDTH);
     stf::print_utils::printLeft("NT Prefix", COLUMN_WIDTH); 
+    stf::print_utils::printLeft("Loc Hists pre Tkn", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Loc Hs pre NotTkn", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Common Loc Hists", COLUMN_WIDTH);
     stf::print_utils::printLeft("Takens", COLUMN_WIDTH);
     stf::print_utils::printLeft("Not Takens", COLUMN_WIDTH);
     stf::print_utils::printLeft("Dir Changes", COLUMN_WIDTH);
@@ -415,6 +428,27 @@ int main(int argc, char** argv) {
 
         stf::print_utils::printDecLeft(total, COLUMN_WIDTH);
         stf::print_utils::printDecLeft(branch_info.not_taken_prefix, COLUMN_WIDTH);
+        if ((branch_info.type==BranchType::CONDITIONAL) && (taken > 0) && (not_taken > 0)) {
+            // if (branch_info.taken_local_histories.size()==1) {
+            //     stf::print_utils::printHex(branch_info.taken_local_histories.begin()->first);
+            //     stf::print_utils::printSpaces(4);
+            //     stf::print_utils::printDec(branch_info.taken_local_histories.begin()->second);
+            //     stf::print_utils::printSpaces(4);
+            // }
+            // else
+            stf::print_utils::printDecLeft(branch_info.taken_local_histories.size(), COLUMN_WIDTH);
+            stf::print_utils::printDecLeft(branch_info.not_taken_local_histories.size(), COLUMN_WIDTH);
+            uint64_t common_loc_hists = 0;
+            for (const auto& pair : branch_info.taken_local_histories) {
+                if (branch_info.not_taken_local_histories.count(pair.first) > 0) common_loc_hists++;
+            }
+            stf::print_utils::printDecLeft(common_loc_hists, COLUMN_WIDTH);
+        }
+        else {
+            stf::print_utils::printLeft("-", COLUMN_WIDTH);
+            stf::print_utils::printLeft("-", COLUMN_WIDTH);
+            stf::print_utils::printLeft("-", COLUMN_WIDTH);
+        }
         stf::print_utils::printDecLeft(taken, COLUMN_WIDTH);
         stf::print_utils::printDecLeft(not_taken, COLUMN_WIDTH);
         stf::print_utils::printDecLeft(branch_info.direction_changes, COLUMN_WIDTH);
@@ -456,6 +490,8 @@ int main(int argc, char** argv) {
         std::map<uint64_t, uint64_t> btb_all_unique_hist;
         std::map<uint64_t, uint64_t> btb_cond_unique_hist;        
         std::map<uint64_t, uint64_t> targets;
+        uint64_t btb_all_allocs_gt_hits = 0;
+        uint64_t btb_cond_allocs_gt_hits = 0;
         std::cout << std::endl;
         stf::print_utils::printLeft("Index", 6);
         stf::print_utils::printLeft("All Allocs", COLUMN_WIDTH);
@@ -477,35 +513,48 @@ int main(int argc, char** argv) {
             stf::print_utils::printDecLeft(btb_all.getAllocations(i), COLUMN_WIDTH);
             if (btb_all.getAllocations(i)!=0) {
                 stf::print_utils::printDecLeft(btb_all.getNumUniquePCs(i), COLUMN_WIDTH);
-                if (btb_all.getAllocations(i)>btb_all.getHits(i)) stf::print_utils::printLeft(">", 6);
+                if (btb_all.getAllocations(i)>btb_all.getHits(i)) {
+                    stf::print_utils::printLeft(">", 6);
+                    btb_all_allocs_gt_hits++;
+                }
                 else stf::print_utils::printSpaces(6);
                 stf::print_utils::printDecLeft(btb_all.getHits(i), COLUMN_WIDTH);
                 stf::print_utils::printSpaces(COLUMN_WIDTH);
                 stf::print_utils::printDecLeft(btb_cond.getAllocations(i), COLUMN_WIDTH);
                 if (btb_cond.getAllocations(i)!=0) {
                     stf::print_utils::printDecLeft(btb_cond.getNumUniquePCs(i), COLUMN_WIDTH);
-                    if (btb_cond.getAllocations(i)>btb_cond.getHits(i)) stf::print_utils::printLeft(">", 6);
+                    if (btb_cond.getAllocations(i)>btb_cond.getHits(i)) {
+                        stf::print_utils::printLeft(">", 6);
+                        btb_cond_allocs_gt_hits++;
+                    }
                     else stf::print_utils::printSpaces(6);
                     stf::print_utils::printDecLeft(btb_cond.getHits(i), COLUMN_WIDTH);
                 }
             }
             std::cout << std::endl;
         }
+        std::cout << std::endl << "Amount of BTB indices with more allocations than hits" << std::endl;
+        stf::print_utils::printLeft("BTB All Branches", 20);
+        stf::print_utils::printLeft("BTB Cond Branches", 20);
+        std::cout << std::endl;
+        stf::print_utils::printDecLeft(btb_all_allocs_gt_hits, 20);
+        stf::print_utils::printDecLeft(btb_cond_allocs_gt_hits, 20);
+        std::cout << std::endl;
         std::cout << std::endl << "Histogram of unique branch PCs sharing BTB indices" << std::endl;
-        stf::print_utils::printLeft("Unique branch PCs per BTB Index", 30);
+        stf::print_utils::printLeft("Unique branch PCs per BTB Index", 45);
         stf::print_utils::printLeft("BTB Indices Count", 20);
         std::cout << std::endl;
         for (const auto& pair : btb_all_unique_hist) {
-            stf::print_utils::printDecLeft(pair.first, 30);
+            stf::print_utils::printDecLeft(pair.first, 45);
             stf::print_utils::printDecLeft(pair.second, 20);
             std::cout << std::endl;
         }
         std::cout << std::endl << "Histogram of unique conditional branch PCs sharing BTB indices" << std::endl;
-        stf::print_utils::printLeft("Unique conditional branch PCs per BTB Index", 30);
+        stf::print_utils::printLeft("Unique conditional branch PCs per BTB Index", 45);
         stf::print_utils::printLeft("BTB Indices Count", 20);
         std::cout << std::endl;
         for (const auto& pair : btb_cond_unique_hist) {
-            stf::print_utils::printDecLeft(pair.first, 30);
+            stf::print_utils::printDecLeft(pair.first, 45);
             stf::print_utils::printDecLeft(pair.second, 20);
             std::cout << std::endl;
         }
