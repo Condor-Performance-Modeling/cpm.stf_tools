@@ -98,6 +98,11 @@ public:
     }; 
 };
 
+struct DualCounter {
+    uint64_t taken = 0;
+    uint64_t not_taken = 0;
+};
+
 struct BranchInfo {
     uint64_t not_taken_prefix = 0;
     uint64_t taken = 0;
@@ -114,8 +119,7 @@ struct BranchInfo {
     std::map<uint64_t, uint64_t> pre_precedents;
     std::map<uint64_t, uint64_t> taken_precedents;
     std::map<uint64_t, uint64_t> indirect_precedents;
-    std::map<uint64_t, uint64_t> taken_local_histories;
-    std::map<uint64_t, uint64_t> not_taken_local_histories;
+    std::map<uint64_t, DualCounter> local_histories;
     bool previous_taken = false;
     bool stable_seq_taken = true;
     bool indirect = false;
@@ -246,8 +250,8 @@ int main(int argc, char** argv) {
         }
 
         if (branch_info.type == BranchType::CONDITIONAL) {
-            if (is_taken) branch_info.taken_local_histories[(branch_info.local_dir_history & 65535)]++;
-            else branch_info.not_taken_local_histories[(branch_info.local_dir_history & 65535)]++;
+            if (is_taken) branch_info.local_histories[(branch_info.local_dir_history & 65535)].taken++;
+            else branch_info.local_histories[(branch_info.local_dir_history & 65535)].not_taken++;
         }
         branch_info.local_dir_history = (branch_info.local_dir_history<<1) | (is_taken & 0x1);
 
@@ -283,10 +287,10 @@ int main(int argc, char** argv) {
     stf::print_utils::printLeft("MaxDistance", 12);
     stf::print_utils::printLeft("Direction", 12);
     stf::print_utils::printLeft("Total Instances", COLUMN_WIDTH);
-    stf::print_utils::printLeft("NT Prefix", COLUMN_WIDTH); 
-    stf::print_utils::printLeft("Loc Hists pre Tkn", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Loc Hs pre NotTkn", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Common Loc Hists", COLUMN_WIDTH);
+    stf::print_utils::printLeft("NT Prefix", 12); 
+    stf::print_utils::printLeft("Loc Hists", 12);
+    stf::print_utils::printLeft("Loc Hists T&N", 14);
+    stf::print_utils::printLeft("Avg Loc Entropy", COLUMN_WIDTH);    
     stf::print_utils::printLeft("Takens", COLUMN_WIDTH);
     stf::print_utils::printLeft("Not Takens", COLUMN_WIDTH);
     stf::print_utils::printLeft("Dir Changes", COLUMN_WIDTH);
@@ -427,26 +431,29 @@ int main(int argc, char** argv) {
         };
 
         stf::print_utils::printDecLeft(total, COLUMN_WIDTH);
-        stf::print_utils::printDecLeft(branch_info.not_taken_prefix, COLUMN_WIDTH);
+        stf::print_utils::printDecLeft(branch_info.not_taken_prefix, 12);
+
         if ((branch_info.type==BranchType::CONDITIONAL) && (taken > 0) && (not_taken > 0)) {
-            // if (branch_info.taken_local_histories.size()==1) {
-            //     stf::print_utils::printHex(branch_info.taken_local_histories.begin()->first);
-            //     stf::print_utils::printSpaces(4);
-            //     stf::print_utils::printDec(branch_info.taken_local_histories.begin()->second);
-            //     stf::print_utils::printSpaces(4);
-            // }
-            // else
-            stf::print_utils::printDecLeft(branch_info.taken_local_histories.size(), COLUMN_WIDTH);
-            stf::print_utils::printDecLeft(branch_info.not_taken_local_histories.size(), COLUMN_WIDTH);
+            stf::print_utils::printDecLeft(branch_info.local_histories.size(), 12);
             uint64_t common_loc_hists = 0;
-            for (const auto& pair : branch_info.taken_local_histories) {
-                if (branch_info.not_taken_local_histories.count(pair.first) > 0) common_loc_hists++;
+            double branch_local_entropy_sum = 0.0;
+            for (const auto& pair : branch_info.local_histories) {
+
+                if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
+                    common_loc_hists++;
+                }
+                double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
+                double prob_taken = (double)pair.second.taken / hist_instances;
+                double hist_entropy = prob_taken > 0.5 ? (1 - prob_taken) : prob_taken;   // min(p, 1-p)
+                branch_local_entropy_sum += hist_instances * 2.0 * hist_entropy;
             }
-            stf::print_utils::printDecLeft(common_loc_hists, COLUMN_WIDTH);
+            stf::print_utils::printDecLeft(common_loc_hists, 14);
+            std::cout << std::fixed << std::setprecision(4) << (branch_local_entropy_sum/(double)(taken+not_taken));
+            stf::print_utils::printSpaces(COLUMN_WIDTH-6);          
         }
         else {
-            stf::print_utils::printLeft("-", COLUMN_WIDTH);
-            stf::print_utils::printLeft("-", COLUMN_WIDTH);
+            stf::print_utils::printLeft("-", 12);
+            stf::print_utils::printLeft("-", 14);
             stf::print_utils::printLeft("-", COLUMN_WIDTH);
         }
         stf::print_utils::printDecLeft(taken, COLUMN_WIDTH);
