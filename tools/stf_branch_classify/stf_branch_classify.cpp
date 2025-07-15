@@ -122,6 +122,7 @@ struct BranchInfo {
     std::map<uint64_t, DualCounter> local_histories;
     std::map<uint64_t, DualCounter> global_dir_histories;
     std::map<uint64_t, DualCounter> cond_dir_histories;
+    std::map<uint64_t, DualCounter> global_path_histories;
     bool previous_taken = false;
     bool stable_seq_taken = true;
     bool indirect = false;
@@ -162,6 +163,7 @@ int main(int argc, char** argv) {
 
     uint64_t global_dir_history = 0;
     uint64_t cond_dir_history = 0;
+    uint64_t global_path_history = 0;
 
     for(const auto& branch: reader) {
         auto& branch_info = branch_counts[branch.getPC()];
@@ -260,16 +262,19 @@ int main(int argc, char** argv) {
                 branch_info.local_histories[(branch_info.local_dir_history & 65535)].taken++;
                 branch_info.global_dir_histories[(global_dir_history & 65535)].taken++;
                 branch_info.cond_dir_histories[(cond_dir_history & 65535)].taken++;
+                branch_info.global_path_histories[(global_path_history & 65535)].taken++;
             }
             else {
                 branch_info.local_histories[(branch_info.local_dir_history & 65535)].not_taken++;
                 branch_info.global_dir_histories[(global_dir_history & 65535)].not_taken++;
                 branch_info.cond_dir_histories[(cond_dir_history & 65535)].not_taken++;
+                branch_info.global_path_histories[(global_path_history & 65535)].not_taken++;
             }
             cond_dir_history = (cond_dir_history<<1) | (is_taken & 0x1);
         }
         branch_info.local_dir_history = (branch_info.local_dir_history<<1) | (is_taken & 0x1);
         global_dir_history = (global_dir_history<<1) | (is_taken & 0x1);
+        global_path_history = (global_path_history<<1) ^ (branch.getPC() & 65535);
 
         all_total++;
     }
@@ -312,7 +317,10 @@ int main(int argc, char** argv) {
     stf::print_utils::printLeft("Glo Dir Entropy", COLUMN_WIDTH);  
     stf::print_utils::printLeft("Cnd Dir Hists", 14); 
     stf::print_utils::printLeft("Cnd Hs Mixed", 14);
-    stf::print_utils::printLeft("Cnd Dir Entropy", COLUMN_WIDTH);    
+    stf::print_utils::printLeft("Cnd Dir Entropy", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Glo Path Hists", 14);
+    stf::print_utils::printLeft("Glo PHs Mixed", 14);
+    stf::print_utils::printLeft("Glo Path Entropy", COLUMN_WIDTH);  
     stf::print_utils::printLeft("Takens", COLUMN_WIDTH);
     stf::print_utils::printLeft("Not Takens", COLUMN_WIDTH);
     stf::print_utils::printLeft("Dir Changes", COLUMN_WIDTH);
@@ -326,6 +334,21 @@ int main(int argc, char** argv) {
     std::cout << std::endl;
 
     uint64_t rank = 0;
+
+    double max_local_entropy = 0.0;
+    double max_glo_dir_entropy = 0.0;
+    double max_cond_entropy = 0.0;
+    double max_glo_path_entropy = 0.0;
+
+    uint64_t max_local_ent_rank = 0;
+    uint64_t max_glo_dir_ent_rank = 0;
+    uint64_t max_cond_ent_rank = 0;
+    uint64_t max_glo_path_ent_rank = 0;
+
+    uint64_t max_local_ent_pc = 0;
+    uint64_t max_glo_dir_ent_pc = 0;
+    uint64_t max_cond_ent_pc = 0;
+    uint64_t max_glo_path_ent_pc = 0;
 
     for(const auto& branch: summary) {
         const auto& branch_info = branch.second;
@@ -459,6 +482,7 @@ int main(int argc, char** argv) {
             stf::print_utils::printDecLeft(branch_info.local_histories.size(), 12);
             uint64_t mixed_hists = 0;
             double branch_entropy_sum = 0.0;
+            double avg_branch_entropy = 0.0;
             for (const auto& pair : branch_info.local_histories) {
 
                 if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
@@ -468,9 +492,15 @@ int main(int argc, char** argv) {
                 double prob_taken = (double)pair.second.taken / hist_instances;
                 double hist_entropy = prob_taken > 0.5 ? (1 - prob_taken) : prob_taken;   // min(p, 1-p)
                 branch_entropy_sum += hist_instances * 2.0 * hist_entropy;
+                avg_branch_entropy = branch_entropy_sum/(double)(taken+not_taken);
+                if (!limit_reached && (avg_branch_entropy > max_local_entropy)) {
+                    max_local_entropy = avg_branch_entropy;
+                    max_local_ent_rank = rank;
+                    max_local_ent_pc = pc;
+                }
             }
             stf::print_utils::printDecLeft(mixed_hists, 14);
-            std::cout << std::fixed << std::setprecision(4) << (branch_entropy_sum/(double)(taken+not_taken));
+            std::cout << std::fixed << std::setprecision(4) << avg_branch_entropy;
             stf::print_utils::printSpaces(COLUMN_WIDTH-6);
 
             stf::print_utils::printDecLeft(branch_info.global_dir_histories.size(), 14);
@@ -485,9 +515,16 @@ int main(int argc, char** argv) {
                 double prob_taken = (double)pair.second.taken / hist_instances;
                 double hist_entropy = prob_taken > 0.5 ? (1 - prob_taken) : prob_taken;   // min(p, 1-p)
                 branch_entropy_sum += hist_instances * 2.0 * hist_entropy;
+                avg_branch_entropy = branch_entropy_sum/(double)(taken+not_taken);
+                if (!limit_reached && (avg_branch_entropy > max_glo_dir_entropy)) {
+                    max_glo_dir_entropy = avg_branch_entropy;
+                    max_glo_dir_ent_rank = rank;
+                    max_glo_dir_ent_pc = pc;
+                }
+
             }
             stf::print_utils::printDecLeft(mixed_hists, 14);
-            std::cout << (branch_entropy_sum/(double)(taken+not_taken));
+            std::cout << avg_branch_entropy;
             stf::print_utils::printSpaces(COLUMN_WIDTH-6);
 
             stf::print_utils::printDecLeft(branch_info.cond_dir_histories.size(), 14);
@@ -502,13 +539,47 @@ int main(int argc, char** argv) {
                 double prob_taken = (double)pair.second.taken / hist_instances;
                 double hist_entropy = prob_taken > 0.5 ? (1 - prob_taken) : prob_taken;   // min(p, 1-p)
                 branch_entropy_sum += hist_instances * 2.0 * hist_entropy;
+                avg_branch_entropy = branch_entropy_sum/(double)(taken+not_taken);
+                if (!limit_reached && (avg_branch_entropy > max_cond_entropy)) {
+                    max_cond_entropy = avg_branch_entropy;
+                    max_cond_ent_rank = rank;
+                    max_cond_ent_pc = pc;
+                }               
             }
             stf::print_utils::printDecLeft(mixed_hists, 14);
-            std::cout << (branch_entropy_sum/(double)(taken+not_taken));
-            stf::print_utils::printSpaces(COLUMN_WIDTH-6);          
+            std::cout << avg_branch_entropy;
+            stf::print_utils::printSpaces(COLUMN_WIDTH-6);
+            
+            stf::print_utils::printDecLeft(branch_info.global_path_histories.size(), 14);
+            mixed_hists = 0;
+            branch_entropy_sum = 0;
+            for (const auto& pair : branch_info.global_path_histories) {
+
+                if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
+                    mixed_hists++;
+                }
+                double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
+                double prob_taken = (double)pair.second.taken / hist_instances;
+                double hist_entropy = prob_taken > 0.5 ? (1 - prob_taken) : prob_taken;   // min(p, 1-p)
+                branch_entropy_sum += hist_instances * 2.0 * hist_entropy;
+                avg_branch_entropy = branch_entropy_sum/(double)(taken+not_taken);
+                if (!limit_reached && (avg_branch_entropy > max_glo_path_entropy)) {
+                    max_glo_path_entropy = avg_branch_entropy;
+                    max_glo_path_ent_rank = rank;
+                    max_glo_path_ent_pc = pc;
+                }
+
+            }
+            stf::print_utils::printDecLeft(mixed_hists, 14);
+            std::cout << avg_branch_entropy;
+            stf::print_utils::printSpaces(COLUMN_WIDTH-6);
+
         }
         else {
             stf::print_utils::printLeft("-", 12);
+            stf::print_utils::printLeft("-", 14);
+            stf::print_utils::printLeft("-", COLUMN_WIDTH);
+            stf::print_utils::printLeft("-", 14);
             stf::print_utils::printLeft("-", 14);
             stf::print_utils::printLeft("-", COLUMN_WIDTH);
             stf::print_utils::printLeft("-", 14);
@@ -555,6 +626,11 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     
+    std::cout << std::endl << "Max Local Entropy: " << max_local_entropy << " Rank : " << max_local_ent_rank << " PC: " << std::hex << max_local_ent_pc;
+    std::cout << "  Max Global Entropy: " << max_glo_dir_entropy << std::dec << " Rank : " << max_glo_dir_ent_rank << " PC: " << std::hex << max_glo_dir_ent_pc;
+    std::cout << "  Max Conditional Entropy: " << max_cond_entropy << std::dec << " Rank : " << max_cond_ent_rank << " PC: " << std::hex << max_cond_ent_pc;        
+    std::cout << "  Max Global Entropy: " << max_glo_path_entropy << std::dec << " Rank : " << max_glo_path_ent_rank << " PC: " << std::hex << max_glo_path_ent_pc << std::endl;
+
     if(btb_index) {
         std::map<uint64_t, uint64_t> btb_all_unique_hist;
         std::map<uint64_t, uint64_t> btb_cond_unique_hist;        
