@@ -25,7 +25,7 @@ void processCommandLine(int argc,
     parser.addFlag('d', "only report dynamic branches (branches that are not always-taken or never-taken)");
     parser.addFlag('u', "skip non user-mode instructions");
     parser.addFlag('b', "report 1K BTB index allocations & hits");
-    parser.addFlag('e', "report branch entropies per history type: local, all TN, conditional TN, path");
+    parser.addFlag('e', "report branch entropies per history type: local, all TN, conditional TN, PC path, Target path");
     parser.addPositionalArgument("trace", "trace in STF format");
     parser.parseArguments(argc, argv);
     verbose = parser.hasArgument('v');
@@ -57,6 +57,21 @@ enum class BranchType : uint8_t {
     ERROR
 };
 
+std::ostream& operator<<(std::ostream& os, const BranchType& type) {
+    switch (type) {
+        case BranchType::INVALID: os << "INV!"; break;
+        case BranchType::CONDITIONAL: os << "COND"; break;
+        case BranchType::CALL: os << "Call"; break;
+        case BranchType::M_CALL: os << "M_Cl"; break;
+        case BranchType::RETURN: os << "Retn"; break;
+        case BranchType::M_RET: os << "M_Rt"; break;
+        case BranchType::JUMP: os << "Jump"; break;
+        case BranchType::M_JUMP: os << "M_Jp"; break;
+        case BranchType::ERROR: os << "ERR!"; break;
+    }
+    return os;
+}
+
 class BTB {
     struct CacheInfo {
         uint64_t tag = 0;
@@ -67,7 +82,8 @@ class BTB {
     };
     std::array<CacheInfo, 1024> table_;
     uint64_t index_mask_ = (1024-1);
-public:
+
+    public:
     void access(uint64_t addr) {
         addr >>= 1;
         uint64_t index = addr & index_mask_;
@@ -119,13 +135,16 @@ struct BranchInfo {
     uint64_t local_dir_history = 0;
     std::map<uint64_t, uint64_t> targets;
     std::map<uint64_t, uint64_t> precedents;
+    std::map<BranchType, uint64_t> precedent_types;
     std::map<uint64_t, uint64_t> pre_precedents;
+    //std::map<uint64_t, uint64_t> cond_precedents;
     std::map<uint64_t, uint64_t> taken_precedents;
     std::map<uint64_t, uint64_t> indirect_precedents;
     std::map<uint64_t, DualCounter> local_histories;
     std::map<uint64_t, DualCounter> global_dir_histories;
     std::map<uint64_t, DualCounter> cond_dir_histories;
     std::map<uint64_t, DualCounter> global_path_histories;
+    std::map<uint64_t, DualCounter> global_targ_histories;
     bool previous_taken = false;
     bool stable_seq_taken = true;
     bool indirect = false;
@@ -142,13 +161,19 @@ int main(int argc, char** argv) {
     bool skip_non_user = false;
     bool btb_index = false;
     bool entropy_report = false;
+    BranchType preceding_branch_type = BranchType::INVALID;
     uint64_t preceding_branch_pc = 0x0;
     uint64_t pre_preceding_branch_pc = 0x0;
+    //uint64_t preceding_cond_branch_pc = 0x0;    
     uint64_t preceding_taken_branch_pc = 0x0;
     uint64_t preceding_indirect_branch_pc = 0x0;    
     uint64_t all_total = 0;
     uint64_t all_total_prefix = 0;
     uint64_t running_total = 0;
+    uint64_t total_static_cond_dyn = 0;
+    uint64_t total_cond_dyn_instances = 0;
+    uint64_t total_static_cond_1bbl = 0;
+    uint64_t total_cond_1bbl_instances = 0;
     BTB btb_all;
     BTB btb_cond;
 
@@ -168,6 +193,7 @@ int main(int argc, char** argv) {
     uint64_t global_dir_history = 0;
     uint64_t cond_dir_history = 0;
     uint64_t global_path_history = 0;
+    uint64_t global_targ_history = 0;
 
     for(const auto& branch: reader) {
         auto& branch_info = branch_counts[branch.getPC()];
@@ -220,8 +246,11 @@ int main(int argc, char** argv) {
         branch_info.indirect = branch.isIndirect();
         branch_info.repeated |= (branch.getPC()==preceding_branch_pc);
 
+        
+        branch_info.precedent_types[preceding_branch_type]++;
         branch_info.precedents[preceding_branch_pc]++;
         branch_info.pre_precedents[pre_preceding_branch_pc]++;
+        //branch_info.cond_precedents[cond_preceding_branch_pc]++;
         branch_info.taken_precedents[preceding_taken_branch_pc]++;
         branch_info.indirect_precedents[preceding_indirect_branch_pc]++;
 
@@ -260,25 +289,30 @@ int main(int argc, char** argv) {
             branch_info.type = BranchType::ERROR;
         }
 
+        preceding_branch_type = branch_info.type;
+
         // This is tracking all histories including those prior to first taken instance
         if (branch_info.type == BranchType::CONDITIONAL) {  
             if (is_taken) {
-                branch_info.local_histories[(branch_info.local_dir_history & 15)].taken++;
+                branch_info.local_histories[(branch_info.local_dir_history & 65535)].taken++;
                 branch_info.global_dir_histories[(global_dir_history & 65535)].taken++;
                 branch_info.cond_dir_histories[(cond_dir_history & 65535)].taken++;
                 branch_info.global_path_histories[(global_path_history & 65535)].taken++;
+                branch_info.global_targ_histories[(global_targ_history & 65535)].taken++;
             }
             else {
-                branch_info.local_histories[(branch_info.local_dir_history & 15)].not_taken++;
+                branch_info.local_histories[(branch_info.local_dir_history & 65535)].not_taken++;
                 branch_info.global_dir_histories[(global_dir_history & 65535)].not_taken++;
                 branch_info.cond_dir_histories[(cond_dir_history & 65535)].not_taken++;
                 branch_info.global_path_histories[(global_path_history & 65535)].not_taken++;
+                branch_info.global_targ_histories[(global_targ_history & 65535)].not_taken++;
             }
             cond_dir_history = (cond_dir_history<<1) | (is_taken & 0x1);
         }
         branch_info.local_dir_history = (branch_info.local_dir_history<<1) | (is_taken & 0x1);
         global_dir_history = (global_dir_history<<1) | (is_taken & 0x1);
         global_path_history = (global_path_history<<1) ^ ((branch.getPC()>>1) & 65535);
+        global_targ_history = (global_targ_history<<1) ^ ((branch.getTargetPC()>>1) & 65535);
 
         all_total++;
     }
@@ -306,6 +340,7 @@ int main(int argc, char** argv) {
     //stf::print_utils::printLeft("Behavior", 12);
     stf::print_utils::printLeft("PrePrecedes", 12);    
     stf::print_utils::printLeft("Precedents", 12);
+    stf::print_utils::printLeft("Prec. Types", 12);
     stf::print_utils::printLeft("TknPrecedes", 12);
     stf::print_utils::printLeft("IndPrecedes", 12);
     stf::print_utils::printLeft("Repeated", 12);
@@ -324,9 +359,12 @@ int main(int argc, char** argv) {
         stf::print_utils::printLeft("Cnd Dir Hists", 14); 
         stf::print_utils::printLeft("Cnd Hs Mixed", 14);
         stf::print_utils::printLeft("Cnd Dir Entropy", COLUMN_WIDTH);
-        stf::print_utils::printLeft("Glo Path Hists", 14);
-        stf::print_utils::printLeft("Glo PHs Mixed", 14);
-        stf::print_utils::printLeft("Glo Path Entropy", COLUMN_WIDTH); 
+        stf::print_utils::printLeft("Glo PcP Hists", 14);
+        stf::print_utils::printLeft("Glo PcH Mixed", 14);
+        stf::print_utils::printLeft("Glo PC Entropy", COLUMN_WIDTH);
+        stf::print_utils::printLeft("Glo TgP Hists", 14);
+        stf::print_utils::printLeft("Glo TgH Mixed", 14);
+        stf::print_utils::printLeft("Glo Tar Entropy", COLUMN_WIDTH); 
     } 
     stf::print_utils::printLeft("Takens", COLUMN_WIDTH);
     stf::print_utils::printLeft("Not Takens", COLUMN_WIDTH);
@@ -346,21 +384,32 @@ int main(int argc, char** argv) {
     double max_glo_dir_entropy = 0.0;
     double max_cond_entropy = 0.0;
     double max_glo_path_entropy = 0.0;
+    double max_glo_targ_entropy = 0.0;
 
     uint64_t max_local_ent_rank = 0;
     uint64_t max_glo_dir_ent_rank = 0;
     uint64_t max_cond_ent_rank = 0;
     uint64_t max_glo_path_ent_rank = 0;
+    uint64_t max_glo_targ_ent_rank = 0;
 
     uint64_t max_local_ent_pc = 0;
     uint64_t max_glo_dir_ent_pc = 0;
     uint64_t max_cond_ent_pc = 0;
     uint64_t max_glo_path_ent_pc = 0;
+    uint64_t max_glo_targ_ent_pc = 0;
+    
+
+    std::map<uint64_t, uint64_t> num_loc_histories_hist;
+    std::map<uint64_t, uint64_t> num_glo_histories_hist;
+    std::map<uint64_t, uint64_t> num_cond_histories_hist;
+    std::map<uint64_t, uint64_t> num_path_histories_hist;
+    std::map<uint64_t, uint64_t> num_targ_histories_hist;
 
     std::array<uint64_t, 10> local_entropy_hist {};
     std::array<uint64_t, 10> glo_dir_entropy_hist {};
     std::array<uint64_t, 10> cond_entropy_hist {};
     std::array<uint64_t, 10> glo_path_entropy_hist {};
+    std::array<uint64_t, 10> glo_targ_entropy_hist {};
 
     for(const auto& branch: summary) {
         const auto& branch_info = branch.second;
@@ -392,7 +441,30 @@ int main(int argc, char** argv) {
         stf::print_utils::printHex(pc);
         stf::print_utils::printSpaces(4);
 
-        switch(branch_info.type) {
+        if (branch_info.type == BranchType::CONDITIONAL) {
+            if (!limit_reached) { cond_before_limit++; }  // Count all conditionals including CATs
+            if (taken && !not_taken) stf::print_utils::printLeft("  CAT", 12);
+            else {
+                if (taken && not_taken_after_prefix) {
+                    if (branch_info.repeated && branch_info.direction==Direction::BACKWARD) {
+                        stf::print_utils::printLeft("C1BBL", 12);
+                        total_static_cond_1bbl++;
+                        total_cond_1bbl_instances += total;
+                    }
+                    else {
+                        stf::print_utils::printLeft(" CDYN", 12);
+                        total_static_cond_dyn++;
+                        total_cond_dyn_instances += total;
+                    }
+                }
+                else stf::print_utils::printLeft(" COND", 12);
+            }
+        }
+        else {
+            std::cout << branch_info.type;
+            stf::print_utils::printSpaces(8);
+        }
+/*         switch(branch_info.type) {
             case BranchType::CONDITIONAL:
                 if (!limit_reached) { cond_before_limit++; }  // Count all conditionals including CATs
                 if (taken && !not_taken) stf::print_utils::printLeft("  CAT", 12);
@@ -425,9 +497,9 @@ int main(int argc, char** argv) {
                 stf::print_utils::printLeft("ERROR", 12);
                 break;
             case BranchType::INVALID:
-                stf_throw("Invalid branch direction for pc " << std::hex << pc);
+                stf_throw("Invalid branch type for pc " << std::hex << pc);
         };
-        
+ */        
         // if(taken && !not_taken) {
         //     if (branch_info.indirect)
         //         stf::print_utils::printLeft("at", 12);
@@ -447,10 +519,40 @@ int main(int argc, char** argv) {
         //     stf::print_utils::printLeft("DYN", 12);
         // }
 
-        stf::print_utils::printDecLeft(branch_info.pre_precedents.size(), 12);
-        stf::print_utils::printDecLeft(branch_info.precedents.size(), 12);
-        stf::print_utils::printDecLeft(branch_info.taken_precedents.size(), 12);
-        stf::print_utils::printDecLeft(branch_info.indirect_precedents.size(), 12);
+        if (branch_info.pre_precedents.size()==1) {
+            stf::print_utils::printHex(static_cast<uint32_t>(branch_info.pre_precedents.begin()->first));
+            stf::print_utils::printSpaces(4);
+        }
+        else
+            stf::print_utils::printDecLeft(branch_info.pre_precedents.size(), 12);
+
+        if (branch_info.precedents.size()==1) {
+            stf::print_utils::printHex(static_cast<uint32_t>(branch_info.precedents.begin()->first));
+            stf::print_utils::printSpaces(4);
+        }
+        else
+            stf::print_utils::printDecLeft(branch_info.precedents.size(), 12);
+
+        if (branch_info.precedent_types.size() == 1)
+            std::cout << branch_info.precedent_types.begin()->first << "        ";
+        else
+            stf::print_utils::printDecLeft(branch_info.precedent_types.size(), 12);
+        //stf::print_utils::printDecLeft(branch_info.cond_precedents.size(), 12);
+        
+        if (branch_info.taken_precedents.size()==1) {
+            stf::print_utils::printHex(static_cast<uint32_t>(branch_info.taken_precedents.begin()->first));
+            stf::print_utils::printSpaces(4);
+        }
+        else
+            stf::print_utils::printDecLeft(branch_info.taken_precedents.size(), 12);
+
+        if (branch_info.indirect_precedents.size()==1) {
+            stf::print_utils::printHex(static_cast<uint32_t>(branch_info.indirect_precedents.begin()->first));
+            stf::print_utils::printSpaces(4);
+        }
+        else
+            stf::print_utils::printDecLeft(branch_info.indirect_precedents.size(), 12);
+    
         if(branch_info.repeated) {
             if (branch_info.direction==Direction::FORWARD) stf::print_utils::printLeft("Y->", 12);
             else if (branch_info.direction==Direction::BACKWARD) stf::print_utils::printLeft("<-Y", 12);
@@ -495,6 +597,7 @@ int main(int argc, char** argv) {
 
         if ((branch_info.type==BranchType::CONDITIONAL) && (taken > 0) && (not_taken > 0)) {
             stf::print_utils::printDecLeft(branch_info.local_histories.size(), 12);
+            num_loc_histories_hist[branch_info.local_histories.size()]++;
             uint64_t mixed_hists = 0;
             double branch_entropy_sum = 0.0;
             double avg_branch_entropy = 0.0;
@@ -523,6 +626,7 @@ int main(int argc, char** argv) {
             stf::print_utils::printSpaces(COLUMN_WIDTH-6);
 
             stf::print_utils::printDecLeft(branch_info.global_dir_histories.size(), 14);
+            num_glo_histories_hist[branch_info.global_dir_histories.size()]++;
             mixed_hists = 0;
             branch_entropy_sum = 0;
             for (const auto& pair : branch_info.global_dir_histories) {
@@ -550,6 +654,7 @@ int main(int argc, char** argv) {
             stf::print_utils::printSpaces(COLUMN_WIDTH-6);
 
             stf::print_utils::printDecLeft(branch_info.cond_dir_histories.size(), 14);
+            num_cond_histories_hist[branch_info.cond_dir_histories.size()]++;
             mixed_hists = 0;
             branch_entropy_sum = 0;
             for (const auto& pair : branch_info.cond_dir_histories) {
@@ -577,6 +682,7 @@ int main(int argc, char** argv) {
             stf::print_utils::printSpaces(COLUMN_WIDTH-6);
             
             stf::print_utils::printDecLeft(branch_info.global_path_histories.size(), 14);
+            num_path_histories_hist[branch_info.global_path_histories.size()]++;
             mixed_hists = 0;
             branch_entropy_sum = 0;
             for (const auto& pair : branch_info.global_path_histories) {
@@ -603,9 +709,40 @@ int main(int argc, char** argv) {
             std::cout << avg_branch_entropy;
             stf::print_utils::printSpaces(COLUMN_WIDTH-6);
 
+            stf::print_utils::printDecLeft(branch_info.global_targ_histories.size(), 14);
+            num_targ_histories_hist[branch_info.global_targ_histories.size()]++;
+            mixed_hists = 0;
+            branch_entropy_sum = 0;
+            for (const auto& pair : branch_info.global_targ_histories) {
+
+                if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
+                    mixed_hists++;
+                }
+                double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
+                double prob_taken = (double)pair.second.taken / hist_instances;
+                double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
+                branch_entropy_sum += hist_instances * hist_entropy;
+            }
+            avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
+            if (!limit_reached) {
+                uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards against array bound
+                glo_targ_entropy_hist[decile]++;
+                if (avg_branch_entropy > max_glo_targ_entropy) {
+                    max_glo_targ_entropy = avg_branch_entropy;
+                    max_glo_targ_ent_rank = rank;
+                    max_glo_targ_ent_pc = pc;
+                }
+            }
+            stf::print_utils::printDecLeft(mixed_hists, 14);
+            std::cout << avg_branch_entropy;
+            stf::print_utils::printSpaces(COLUMN_WIDTH-6);
+
         }
         else {
             stf::print_utils::printLeft("-", 12);
+            stf::print_utils::printLeft("-", 14);
+            stf::print_utils::printLeft("-", COLUMN_WIDTH);
+            stf::print_utils::printLeft("-", 14);
             stf::print_utils::printLeft("-", 14);
             stf::print_utils::printLeft("-", COLUMN_WIDTH);
             stf::print_utils::printLeft("-", 14);
@@ -654,16 +791,80 @@ int main(int argc, char** argv) {
             }
         }
         std::cout << std::endl;
+
     }
 
+    std::cout << std::endl;
+    std::cout << "Branch Type & Behavior Category Totals prior to limit" << std::endl;
+    std::cout << "Unique (static) Conditional Dynamic:    " << total_static_cond_dyn << std::endl;
+    std::cout << "Total Conditional Dynamic Instances:    " << total_cond_dyn_instances << std::endl;
+    std::cout << "Unique (static) Conditional Self Loops: " << total_static_cond_1bbl << std::endl;
+    std::cout << "Total Conditional Self Loop Instances:  " << total_cond_1bbl_instances << std::endl;
+
     if (entropy_report) {
-        std::cout << std::endl << "Total conditional branches prior to limit including always taken 0 entropy CATs: " << cond_before_limit << std::endl;
-        std::cout << std::endl << "Max Local Entropy: " << max_local_entropy << " Rank : " << max_local_ent_rank << " PC: " << std::hex << max_local_ent_pc;
-        std::cout << "  Max Global Entropy: " << max_glo_dir_entropy << std::dec << " Rank : " << max_glo_dir_ent_rank << " PC: " << std::hex << max_glo_dir_ent_pc;
-        std::cout << "  Max Conditional Entropy: " << max_cond_entropy << std::dec << " Rank : " << max_cond_ent_rank << " PC: " << std::hex << max_cond_ent_pc;        
-        std::cout << "  Max PC Path Entropy: " << max_glo_path_entropy << std::dec << " Rank : " << max_glo_path_ent_rank << " PC: " << std::hex << max_glo_path_ent_pc << std::endl;
+        std::cout << std::endl << "Histograms of the amounts of unique histories leading to all dynamic conditional branches" << std::endl;
+        stf::print_utils::printLeft("# Unique Preceding Local Histories", 55);
+        stf::print_utils::printLeft("# Conditional Branches", 25);
+        std::cout << std::endl;
+        for (const auto& pair : num_loc_histories_hist) {
+            stf::print_utils::printDecLeft(pair.first, 55);
+            stf::print_utils::printDecLeft(pair.second, 25);
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+        stf::print_utils::printLeft("# Unique Preceding Global Direction Histories", 55);
+        stf::print_utils::printLeft("# Conditional Branches", 25);
+        std::cout << std::endl;
+        for (const auto& pair : num_glo_histories_hist) {
+            stf::print_utils::printDecLeft(pair.first, 55);
+            stf::print_utils::printDecLeft(pair.second, 25);
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+        stf::print_utils::printLeft("# Unique Preceding Conditional Direction Histories", 55);
+        stf::print_utils::printLeft("# Conditional Branches", 25);
+        std::cout << std::endl;
+        for (const auto& pair : num_cond_histories_hist) {
+            stf::print_utils::printDecLeft(pair.first, 55);
+            stf::print_utils::printDecLeft(pair.second, 25);
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+        stf::print_utils::printLeft("# Unique Preceding Global PC Path Histories", 55);
+        stf::print_utils::printLeft("# Conditional Branches", 25);
+        std::cout << std::endl;
+        for (const auto& pair : num_path_histories_hist) {
+            stf::print_utils::printDecLeft(pair.first, 55);
+            stf::print_utils::printDecLeft(pair.second, 25);
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+        stf::print_utils::printLeft("# Unique Preceding Global Target Path Histories", 55);
+        stf::print_utils::printLeft("# Conditional Branches", 25);
+        std::cout << std::endl;
+        for (const auto& pair : num_targ_histories_hist) {
+            stf::print_utils::printDecLeft(pair.first, 55);
+            stf::print_utils::printDecLeft(pair.second, 25);
+            std::cout << std::endl;
+        }
+
+        std::cout << std::endl << "Total conditional branches prior to limit including always taken 0 entropy CATs: " << cond_before_limit << std::endl << std::endl;
+
+        stf::print_utils::printLeft("Max entropy branches", 38);
+        std::cout << "MaxEntropy \tRank \tPC" << std::endl;
+        stf::print_utils::printLeft("Local History:", 40);
+        std::cout << max_local_entropy << " \t\t" << max_local_ent_rank << " \t" << std::hex << max_local_ent_pc << std::endl;
+        stf::print_utils::printLeft("Global Dir History:", 40);
+        std::cout << max_glo_dir_entropy << std::dec << " \t\t" << max_glo_dir_ent_rank << " \t" << std::hex << max_glo_dir_ent_pc << std::endl;
+        stf::print_utils::printLeft("Conditional Only Direction History:", 40);
+        std::cout << max_cond_entropy << std::dec << " \t\t" << max_cond_ent_rank << " \t" << std::hex << max_cond_ent_pc << std::endl;     
+        stf::print_utils::printLeft("PC Path History:", 40);
+        std::cout << max_glo_path_entropy << std::dec << " \t\t" << max_glo_path_ent_rank << " \t" << std::hex << max_glo_path_ent_pc << std::endl;
+        stf::print_utils::printLeft("Target Path History:", 40);
+        std::cout << max_glo_targ_entropy << std::dec << " \t\t" << max_glo_targ_ent_rank << " \t" << std::hex << max_glo_targ_ent_pc << std::endl << std::endl;
+
         std::cout << "These entropy histgrams only contain conditional branches that were both taken and not-taken - they do not include CATs or NTs which have 0 entropy." << std::endl;
-        std::cout << std::dec << "Entropy Deciles\t0\t1\t2\t3\t4\t5\t6\t7\t8\t9" << std::endl;
+        std::cout << std::dec << "Entropy Deciles\t0<0.1\t0.1<0.2\t0.2<0.3\t0.3<0.4\t0.4<0.5\t0.5<0.6\t0.6<0.7\t0.7<0.8\t0.8<0.9\t>=0.9" << std::endl;
         std::cout << "Local :\t\t";
         for (auto dec_count : local_entropy_hist) std::cout << dec_count << '\t';
         std::cout << std::endl;
@@ -676,6 +877,9 @@ int main(int argc, char** argv) {
         std::cout << "Global Path :\t";
         for (auto dec_count : glo_path_entropy_hist) std::cout << dec_count << '\t';
         std::cout << std::endl;
+        std::cout << "Global Target :\t";
+        for (auto dec_count : glo_targ_entropy_hist) std::cout << dec_count << '\t';
+        std::cout << std::endl;
     }
 
     if(btb_index) {
@@ -687,13 +891,13 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
         stf::print_utils::printLeft("Index", 6);
         stf::print_utils::printLeft("All Allocs", COLUMN_WIDTH);
-        stf::print_utils::printSpaces(6);
+        //stf::print_utils::printSpaces(6);
         stf::print_utils::printLeft("Unique PCs", COLUMN_WIDTH);
         stf::print_utils::printSpaces(6);
         stf::print_utils::printLeft("All Hits", COLUMN_WIDTH);
         stf::print_utils::printSpaces(COLUMN_WIDTH);
         stf::print_utils::printLeft("Cond Allocs", COLUMN_WIDTH);
-        stf::print_utils::printSpaces(6);
+        //stf::print_utils::printSpaces(6);
         stf::print_utils::printLeft("Uniq Cond PCs", COLUMN_WIDTH);
         stf::print_utils::printSpaces(6);
         stf::print_utils::printLeft("Cond Hits", COLUMN_WIDTH);
