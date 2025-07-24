@@ -18,7 +18,7 @@ void processCommandLine(int argc,
                         bool& only_dynamic,
                         bool& skip_non_user,
                         bool& btb_index,
-                        bool& entropy_report,
+                        uint64_t& history_length,
                         double& limit_percent) {
     trace_tools::CommandLineParser parser("stf_branch_classify");
     parser.addFlag('v', "verbose mode (prints indirect branch targets)");
@@ -26,7 +26,7 @@ void processCommandLine(int argc,
     parser.addFlag('d', "only report dynamic branches (branches that are not always-taken or never-taken)");
     parser.addFlag('u', "skip non user-mode instructions");
     parser.addFlag('b', "report 1K BTB index allocations & hits");
-    parser.addFlag('e', "report branch entropies per history type: local, all TN, conditional TN, PC path, Target path");
+    parser.addFlag('e', "history_length", "report branch entropies per history type: local, all TN, conditional TN, PC path, Target path. History length in bits, <65");
     parser.addFlag('l', "limit_percent", "percentage (0.0 < n < 1.0) of all dynamic branch instances less not-taken prefix instances that will be included in summaries");
     parser.addPositionalArgument("trace", "trace in STF format");
     parser.parseArguments(argc, argv);
@@ -35,7 +35,8 @@ void processCommandLine(int argc,
     only_dynamic = parser.hasArgument('d');
     skip_non_user = parser.hasArgument('u');
     btb_index = parser.hasArgument('b');
-    entropy_report = parser.hasArgument('e');
+    // entropy_report = parser.hasArgument('e');
+    parser.getArgumentValue('e', history_length);
     parser.getArgumentValue('l', limit_percent);
 
     parser.getPositionalArgument(0, trace);
@@ -170,7 +171,9 @@ int main(int argc, char** argv) {
     uint64_t pre_preceding_branch_pc = 0x0;
     //uint64_t preceding_cond_branch_pc = 0x0;    
     uint64_t preceding_taken_branch_pc = 0x0;
-    uint64_t preceding_indirect_branch_pc = 0x0;    
+    uint64_t preceding_indirect_branch_pc = 0x0;
+    uint64_t history_length = 0;
+    uint64_t history_mask = (1 << history_length) - 1;
     uint64_t all_total = 0;
     uint64_t all_total_prefix = 0;
     uint64_t running_total = 0;
@@ -182,7 +185,7 @@ int main(int argc, char** argv) {
     BTB btb_cond;
 
     try {
-        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, btb_index, entropy_report, limit_percent);
+        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, btb_index, history_length, limit_percent);
     }
     catch(const trace_tools::CommandLineParser::EarlyExitException& e) {
         std::cerr << e.what() << std::endl;
@@ -198,6 +201,7 @@ int main(int argc, char** argv) {
     uint64_t cond_dir_history = 0;
     uint64_t global_path_history = 0;
     uint64_t global_targ_history = 0;
+    entropy_report = (history_length > 0);
 
     for(const auto& branch: reader) {
         auto& branch_info = branch_counts[branch.getPC()];
@@ -298,25 +302,25 @@ int main(int argc, char** argv) {
         // This is tracking all histories including those prior to first taken instance
         if (branch_info.type == BranchType::CONDITIONAL) {  
             if (is_taken) {
-                branch_info.local_histories[(branch_info.local_dir_history & 65535)].taken++;
-                branch_info.global_dir_histories[(global_dir_history & 65535)].taken++;
-                branch_info.cond_dir_histories[(cond_dir_history & 65535)].taken++;
-                branch_info.global_path_histories[(global_path_history & 65535)].taken++;
-                branch_info.global_targ_histories[(global_targ_history & 65535)].taken++;
+                branch_info.local_histories[(branch_info.local_dir_history & history_mask)].taken++;
+                branch_info.global_dir_histories[(global_dir_history & history_mask)].taken++;
+                branch_info.cond_dir_histories[(cond_dir_history & history_mask)].taken++;
+                branch_info.global_path_histories[(global_path_history & history_mask)].taken++;
+                branch_info.global_targ_histories[(global_targ_history & history_mask)].taken++;
             }
             else {
-                branch_info.local_histories[(branch_info.local_dir_history & 65535)].not_taken++;
-                branch_info.global_dir_histories[(global_dir_history & 65535)].not_taken++;
-                branch_info.cond_dir_histories[(cond_dir_history & 65535)].not_taken++;
-                branch_info.global_path_histories[(global_path_history & 65535)].not_taken++;
-                branch_info.global_targ_histories[(global_targ_history & 65535)].not_taken++;
+                branch_info.local_histories[(branch_info.local_dir_history & history_mask)].not_taken++;
+                branch_info.global_dir_histories[(global_dir_history & history_mask)].not_taken++;
+                branch_info.cond_dir_histories[(cond_dir_history & history_mask)].not_taken++;
+                branch_info.global_path_histories[(global_path_history & history_mask)].not_taken++;
+                branch_info.global_targ_histories[(global_targ_history & history_mask)].not_taken++;
             }
             cond_dir_history = (cond_dir_history<<1) | (is_taken & 0x1);
         }
         branch_info.local_dir_history = (branch_info.local_dir_history<<1) | (is_taken & 0x1);
         global_dir_history = (global_dir_history<<1) | (is_taken & 0x1);
-        global_path_history = (global_path_history<<1) ^ ((branch.getPC()>>1) & 65535);
-        global_targ_history = (global_targ_history<<1) ^ ((branch.getTargetPC()>>1) & 65535);
+        global_path_history = (global_path_history<<1) ^ ((branch.getPC()>>1) & history_mask);
+        global_targ_history = (global_targ_history<<1) ^ ((branch.getTargetPC()>>1) & history_mask);
 
         all_total++;
     }
