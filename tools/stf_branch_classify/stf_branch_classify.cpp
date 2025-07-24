@@ -18,7 +18,8 @@ void processCommandLine(int argc,
                         bool& only_dynamic,
                         bool& skip_non_user,
                         bool& btb_index,
-                        bool& entropy_report) {
+                        bool& entropy_report,
+                        double& limit_percent) {
     trace_tools::CommandLineParser parser("stf_branch_classify");
     parser.addFlag('v', "verbose mode (prints indirect branch targets)");
     parser.addFlag('t', "only report taken branches (branches that are taken at least once)");
@@ -26,6 +27,7 @@ void processCommandLine(int argc,
     parser.addFlag('u', "skip non user-mode instructions");
     parser.addFlag('b', "report 1K BTB index allocations & hits");
     parser.addFlag('e', "report branch entropies per history type: local, all TN, conditional TN, PC path, Target path");
+    parser.addFlag('l', "limit_percent", "percentage (0.0 < n < 1.0) of all dynamic branch instances less not-taken prefix instances that will be included in summaries");
     parser.addPositionalArgument("trace", "trace in STF format");
     parser.parseArguments(argc, argv);
     verbose = parser.hasArgument('v');
@@ -34,6 +36,7 @@ void processCommandLine(int argc,
     skip_non_user = parser.hasArgument('u');
     btb_index = parser.hasArgument('b');
     entropy_report = parser.hasArgument('e');
+    parser.getArgumentValue('l', limit_percent);
 
     parser.getPositionalArgument(0, trace);
 }
@@ -161,6 +164,7 @@ int main(int argc, char** argv) {
     bool skip_non_user = false;
     bool btb_index = false;
     bool entropy_report = false;
+    double limit_percent;
     BranchType preceding_branch_type = BranchType::INVALID;
     uint64_t preceding_branch_pc = 0x0;
     uint64_t pre_preceding_branch_pc = 0x0;
@@ -178,7 +182,7 @@ int main(int argc, char** argv) {
     BTB btb_cond;
 
     try {
-        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, btb_index, entropy_report);
+        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, btb_index, entropy_report, limit_percent);
     }
     catch(const trace_tools::CommandLineParser::EarlyExitException& e) {
         std::cerr << e.what() << std::endl;
@@ -328,8 +332,9 @@ int main(int argc, char** argv) {
     });
     //test = summary[0].second.not_taken;
     //std::cout << "Test after sort: " << test << std::endl;
-    std::cout << "Total Instances: " << all_total << " Total prefix NTs: " << all_total_prefix << std::endl;
-    uint64_t limit = int(0.98*(double)(all_total-all_total_prefix));
+    std::cout << "Total Instances: " << all_total << " Total prefix NTs: " << all_total_prefix;
+    uint64_t limit = int(limit_percent*(double)(all_total-all_total_prefix));
+    std::cout << "  Limit for summary of instances after prefix: " << limit_percent << " Limit instance count: " << limit << std::endl;
     bool limit_reached = false;
     uint64_t cond_before_limit = 0;
 
