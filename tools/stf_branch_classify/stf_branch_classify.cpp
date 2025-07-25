@@ -84,11 +84,11 @@ class BTB {  // direct-mapped only (for now)
         std::map<uint64_t,uint64_t> unique_pcs;
     };
     std::vector<CacheInfo> table_;
-    uint64_t index_mask_ = (1024-1);
+    uint64_t index_mask_;
 
     public:
     BTB () = delete;
-    BTB (uint64_t size) : table_(size) { };
+    BTB (uint64_t size) : table_(size), index_mask_(size-1) { };
 
     void access(uint64_t addr) {
         addr >>= 1;
@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
 
     btb_size = (((btb_size & (btb_size - 1)) == 0) && (btb_size < 131073)) ? btb_size : 0; // btb_size must be power of 2
     BTB btb_all(btb_size);
-    BTB btb_cond(btb_size); 
+    BTB btb_cond(btb_size);
 
     uint64_t global_dir_history = 0;
     uint64_t cond_dir_history = 0;
@@ -922,7 +922,7 @@ int main(int argc, char** argv) {
         stf::print_utils::printSpaces(6);
         stf::print_utils::printLeft("Cond Hits", COLUMN_WIDTH);
         std::cout << std::endl;
-        for (uint64_t i=0; i<1024; i++) {
+        for (uint64_t i=0; i<btb_size; i++) {
             btb_all_unique_hist[btb_all.getNumUniquePCs(i)]++;
             btb_cond_unique_hist[btb_cond.getNumUniquePCs(i)]++;
             stf::print_utils::printDecLeft(i, 6);
