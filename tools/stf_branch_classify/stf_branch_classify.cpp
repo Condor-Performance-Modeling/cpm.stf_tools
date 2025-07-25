@@ -120,7 +120,15 @@ class BTB {  // direct-mapped only (for now)
     uint64_t getNumUniquePCs(uint64_t index) {
         index &= index_mask_;
         return table_[index].unique_pcs.size();
-    }; 
+    };
+    uint64_t getNumOnlyAllocUniquePCs(uint64_t index) {
+        index &= index_mask_;
+        uint64_t unique_pcs_only_alloc = 0;
+        for ( const auto& pair : table_[index].unique_pcs ) {
+            if (pair.second == 1) unique_pcs_only_alloc++; 
+        }
+        return unique_pcs_only_alloc;
+    }
 };
 
 struct DualCounter {
@@ -471,7 +479,18 @@ int main(int argc, char** argv) {
                         total_static_cond_1bbl++;
                         total_cond_1bbl_instances += total;
                     }
-                    else {
+                    else if ((branch_info.max_sequential_taken == 1) && (branch_info.max_sequential_not_taken > 1)) {
+                        stf::print_utils::printLeft(" C_P1T", 12);
+                        total_static_cond_dyn++;
+                        total_cond_dyn_instances += total;
+                    }
+                    else if ((branch_info.max_sequential_not_taken == 1) && (branch_info.max_sequential_taken > 1)) {
+                        stf::print_utils::printLeft(" C_P1N", 12);
+                        total_static_cond_dyn++;
+                        total_cond_dyn_instances += total;
+                    }
+                    else
+                    {
                         stf::print_utils::printLeft(" CDYN", 12);
                         total_static_cond_dyn++;
                         total_cond_dyn_instances += total;
@@ -908,17 +927,23 @@ int main(int argc, char** argv) {
         std::map<uint64_t, uint64_t> targets;
         uint64_t btb_all_allocs_gt_hits = 0;
         uint64_t btb_cond_allocs_gt_hits = 0;
+        uint64_t num_all_indices_with_transient_accesses = 0;
+        uint64_t num_cond_indices_with_transient_accesses = 0;
         std::cout << std::endl << "Branch PC (not basic block start PC) BTB Indexing" << std::endl;
         stf::print_utils::printLeft("Index", 6);
         stf::print_utils::printLeft("All Allocs", COLUMN_WIDTH);
         //stf::print_utils::printSpaces(6);
         stf::print_utils::printLeft("Unique PCs", COLUMN_WIDTH);
+        //stf::print_utils::printSpaces(6);
+        stf::print_utils::printLeft("Uniq PCs 1 Access", COLUMN_WIDTH);
         stf::print_utils::printSpaces(6);
         stf::print_utils::printLeft("All Hits", COLUMN_WIDTH);
         stf::print_utils::printSpaces(COLUMN_WIDTH);
         stf::print_utils::printLeft("Cond Allocs", COLUMN_WIDTH);
         //stf::print_utils::printSpaces(6);
         stf::print_utils::printLeft("Uniq Cond PCs", COLUMN_WIDTH);
+        //stf::print_utils::printSpaces(6);
+        stf::print_utils::printLeft("Unq Cnd PCs 1 Acc", COLUMN_WIDTH);
         stf::print_utils::printSpaces(6);
         stf::print_utils::printLeft("Cond Hits", COLUMN_WIDTH);
         std::cout << std::endl;
@@ -929,6 +954,13 @@ int main(int argc, char** argv) {
             stf::print_utils::printDecLeft(btb_all.getAllocations(i), COLUMN_WIDTH);
             if (btb_all.getAllocations(i)!=0) {
                 stf::print_utils::printDecLeft(btb_all.getNumUniquePCs(i), COLUMN_WIDTH);
+                if (btb_all.getNumOnlyAllocUniquePCs(i)>0) {
+                    stf::print_utils::printDecLeft(btb_all.getNumOnlyAllocUniquePCs(i), COLUMN_WIDTH);
+                    num_all_indices_with_transient_accesses++;
+                }
+                else {
+                    stf::print_utils::printLeft(".", COLUMN_WIDTH);
+                }        
                 if (btb_all.getAllocations(i)>btb_all.getHits(i)) {
                     stf::print_utils::printLeft(">", 6);
                     btb_all_allocs_gt_hits++;
@@ -939,6 +971,13 @@ int main(int argc, char** argv) {
                 stf::print_utils::printDecLeft(btb_cond.getAllocations(i), COLUMN_WIDTH);
                 if (btb_cond.getAllocations(i)!=0) {
                     stf::print_utils::printDecLeft(btb_cond.getNumUniquePCs(i), COLUMN_WIDTH);
+                    if (btb_cond.getNumOnlyAllocUniquePCs(i)>0) {
+                        stf::print_utils::printDecLeft(btb_cond.getNumOnlyAllocUniquePCs(i), COLUMN_WIDTH);
+                        num_cond_indices_with_transient_accesses++;
+                    } 
+                    else {
+                        stf::print_utils::printLeft(".", COLUMN_WIDTH);  
+                    }
                     if (btb_cond.getAllocations(i)>btb_cond.getHits(i)) {
                         stf::print_utils::printLeft(">", 6);
                         btb_cond_allocs_gt_hits++;
@@ -956,10 +995,19 @@ int main(int argc, char** argv) {
         stf::print_utils::printDecLeft(btb_all_allocs_gt_hits, 20);
         stf::print_utils::printDecLeft(btb_cond_allocs_gt_hits, 20);
         std::cout << std::endl;
+
+        std::cout << std::endl << "Amount of BTB indices with unique PCs that were only allocated once and never accessed again" << std::endl;
+        stf::print_utils::printLeft("BTB All Branches", 20);
+        stf::print_utils::printLeft("BTB Cond Branches", 20);
+        std::cout << std::endl;
+        stf::print_utils::printDecLeft(num_all_indices_with_transient_accesses, 20);
+        stf::print_utils::printDecLeft(num_cond_indices_with_transient_accesses, 20);
+        std::cout << std::endl;
+
         std::cout << std::endl << "Histogram of unique branch PCs sharing BTB indices" << std::endl;
         stf::print_utils::printLeft("Unique branch PCs per BTB Index", 45);
         stf::print_utils::printLeft("BTB Indices Count", 20);
-        std::cout << std::endl;
+        std::cout << std::endl;        
         for (const auto& pair : btb_all_unique_hist) {
             stf::print_utils::printDecLeft(pair.first, 45);
             stf::print_utils::printDecLeft(pair.second, 20);
