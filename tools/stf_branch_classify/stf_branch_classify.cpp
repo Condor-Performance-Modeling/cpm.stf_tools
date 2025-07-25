@@ -17,7 +17,7 @@ void processCommandLine(int argc,
                         bool& only_taken,
                         bool& only_dynamic,
                         bool& skip_non_user,
-                        bool& btb_index,
+                        uint64_t& btb_size,
                         uint64_t& history_length,
                         double& limit_percent) {
     trace_tools::CommandLineParser parser("stf_branch_classify");
@@ -25,8 +25,8 @@ void processCommandLine(int argc,
     parser.addFlag('t', "only report taken branches (branches that are taken at least once)");
     parser.addFlag('d', "only report dynamic branches (branches that are not always-taken or never-taken)");
     parser.addFlag('u', "skip non user-mode instructions");
-    parser.addFlag('b', "report 1K BTB index allocations & hits");
-    parser.addFlag('e', "history_length", "report branch entropies per history type: local, all TN, conditional TN, PC path, Target path. History length in bits, <65");
+    parser.addFlag('b', "btb_size", "report BTB of size btb_size per index allocations & hits. btb_size must be power of 2. Maxx allowed btb_size = 131072");
+    parser.addFlag('e', "history_length", "report branch entropies per history type: local, all TN, conditional TN, PC path, Target path. History length in bits, must be < 64");
     parser.addFlag('l', "limit_percent", "percentage (0.0 < n < 1.0) of all dynamic branch instances less not-taken prefix instances that will be included in summaries");
     parser.addPositionalArgument("trace", "trace in STF format");
     parser.parseArguments(argc, argv);
@@ -34,8 +34,7 @@ void processCommandLine(int argc,
     only_taken = parser.hasArgument('t');
     only_dynamic = parser.hasArgument('d');
     skip_non_user = parser.hasArgument('u');
-    btb_index = parser.hasArgument('b');
-    // entropy_report = parser.hasArgument('e');
+    parser.getArgumentValue('b', btb_size);
     parser.getArgumentValue('e', history_length);
     parser.getArgumentValue('l', limit_percent);
 
@@ -76,7 +75,7 @@ std::ostream& operator<<(std::ostream& os, const BranchType& type) {
     return os;
 }
 
-class BTB {
+class BTB {  // direct-mapped only (for now)
     struct CacheInfo {
         uint64_t tag = 0;
         uint64_t allocations = 0;
@@ -84,10 +83,13 @@ class BTB {
         bool valid = false;
         std::map<uint64_t,uint64_t> unique_pcs;
     };
-    std::array<CacheInfo, 1024> table_;
+    std::vector<CacheInfo> table_;
     uint64_t index_mask_ = (1024-1);
 
     public:
+    BTB () = delete;
+    BTB (uint64_t size) : table_(size) { };
+
     void access(uint64_t addr) {
         addr >>= 1;
         uint64_t index = addr & index_mask_;
@@ -163,8 +165,7 @@ int main(int argc, char** argv) {
     bool only_taken = false;
     bool only_dynamic = false;
     bool skip_non_user = false;
-    bool btb_index = false;
-    bool entropy_report = false;
+    uint64_t btb_size = 0;
     double limit_percent;
     BranchType preceding_branch_type = BranchType::INVALID;
     uint64_t preceding_branch_pc = 0x0;
@@ -173,7 +174,7 @@ int main(int argc, char** argv) {
     uint64_t preceding_taken_branch_pc = 0x0;
     uint64_t preceding_indirect_branch_pc = 0x0;
     uint64_t history_length = 0;
-    uint64_t history_mask = (1 << history_length) - 1;
+    //uint64_t history_mask = (1 << history_length) - 1;
     uint64_t all_total = 0;
     uint64_t all_total_prefix = 0;
     uint64_t running_total = 0;
@@ -181,41 +182,48 @@ int main(int argc, char** argv) {
     uint64_t total_cond_dyn_instances = 0;
     uint64_t total_static_cond_1bbl = 0;
     uint64_t total_cond_1bbl_instances = 0;
-    BTB btb_all;
-    BTB btb_cond;
 
     try {
-        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, btb_index, history_length, limit_percent);
+        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, btb_size, history_length, limit_percent);
     }
     catch(const trace_tools::CommandLineParser::EarlyExitException& e) {
         std::cerr << e.what() << std::endl;
         return e.getCode();
     }
 
+
     stf::STFBranchReader reader(trace, skip_non_user);
 
     std::map<uint64_t, BranchInfo> branch_counts;
     std::vector<std::pair<uint64_t, BranchInfo>> summary;
 
+    btb_size = (((btb_size & (btb_size - 1)) == 0) && (btb_size < 131073)) ? btb_size : 0; // btb_size must be power of 2
+    BTB btb_all(btb_size);
+    BTB btb_cond(btb_size); 
+
     uint64_t global_dir_history = 0;
     uint64_t cond_dir_history = 0;
     uint64_t global_path_history = 0;
     uint64_t global_targ_history = 0;
-    entropy_report = (history_length > 0);
+    history_length = std::min(history_length, (uint64_t)63);
+    bool entropy_report = (history_length > 0);
+    uint64_t history_mask = (1 << history_length) - 1;  // this might fail at history_length=64
 
     for(const auto& branch: reader) {
         auto& branch_info = branch_counts[branch.getPC()];
 
         const bool is_taken = branch.isTaken();
 
-        if ((branch_info.taken == 0) && !is_taken) {  // Branch has not yet been taken
+        if ((branch_info.taken == 0) && !is_taken) {  // Branch has not yet ever been taken
             branch_info.not_taken_prefix++;
             all_total_prefix++;
             //continue;
         }
         else {
-            btb_all.access(branch.getPC());
-            if (!branch.isIndirect()) btb_cond.access(branch.getPC()); 
+            if (btb_size > 0) {
+                btb_all.access(branch.getPC());
+                if (!branch.isIndirect()) btb_cond.access(branch.getPC()); 
+            };
         }
 
         if (((branch_info.taken + branch_info.not_taken) > 0) && (branch_info.previous_taken != is_taken)) {
@@ -338,7 +346,10 @@ int main(int argc, char** argv) {
     //std::cout << "Test after sort: " << test << std::endl;
     std::cout << "Total Instances: " << all_total << " Total prefix NTs: " << all_total_prefix;
     uint64_t limit = int(limit_percent*(double)(all_total-all_total_prefix));
-    std::cout << "  Limit for summary of instances after prefix: " << limit_percent << " Limit instance count: " << limit << std::endl;
+    std::cout << "  Limit for summary of instances after prefix: " << limit_percent << " Limit instance count: " << limit;
+    if (entropy_report) std::cout << " Entropy histories length: " << history_length;
+    if (btb_size > 0) std::cout << " BTB Size: " << btb_size;
+    std::cout << std::endl;
     bool limit_reached = false;
     uint64_t cond_before_limit = 0;
 
@@ -891,7 +902,7 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
 
-    if(btb_index) {
+    if(btb_size > 0) {
         std::map<uint64_t, uint64_t> btb_all_unique_hist;
         std::map<uint64_t, uint64_t> btb_cond_unique_hist;        
         std::map<uint64_t, uint64_t> targets;
