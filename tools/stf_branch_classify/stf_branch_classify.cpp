@@ -25,7 +25,7 @@ void processCommandLine(int argc,
     parser.addFlag('t', "only report taken branches (branches that are taken at least once)");
     parser.addFlag('d', "only report dynamic branches (branches that are not always-taken or never-taken)");
     parser.addFlag('u', "skip non user-mode instructions");
-    parser.addFlag('b', "btb_size", "report BTB of size btb_size per index allocations & hits. btb_size must be power of 2. Maxx allowed btb_size = 131072");
+    parser.addFlag('b', "btb_size", "report BTB of size btb_size per index branch PC allocations & hits. btb_size must be power of 2. Maxx allowed btb_size = 131072");
     parser.addFlag('e', "history_length", "report branch entropies per history type: local, all TN, conditional TN, PC path, Target path. History length in bits, must be < 64");
     parser.addFlag('l', "limit_percent", "percentage (0.0 < n < 1.0) of all dynamic branch instances less not-taken prefix instances that will be included in summaries");
     parser.addPositionalArgument("trace", "trace in STF format");
@@ -908,7 +908,7 @@ int main(int argc, char** argv) {
         std::map<uint64_t, uint64_t> targets;
         uint64_t btb_all_allocs_gt_hits = 0;
         uint64_t btb_cond_allocs_gt_hits = 0;
-        std::cout << std::endl;
+        std::cout << std::endl << "Branch PC (not basic block start PC) BTB Indexing" << std::endl;
         stf::print_utils::printLeft("Index", 6);
         stf::print_utils::printLeft("All Allocs", COLUMN_WIDTH);
         //stf::print_utils::printSpaces(6);
