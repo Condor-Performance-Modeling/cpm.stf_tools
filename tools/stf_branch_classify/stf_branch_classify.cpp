@@ -188,9 +188,27 @@ int main(int argc, char** argv) {
     uint64_t running_total = 0;
     uint64_t total_static_cond_dyn = 0;
     uint64_t total_cond_dyn_instances = 0;
+    uint64_t total_static_cond_always_taken = 0;
+    uint64_t total_cond_always_taken_instances = 0;
     uint64_t total_static_cond_1bbl = 0;
     uint64_t total_cond_1bbl_instances = 0;
-
+    uint64_t total_static_cond_m1t = 0;
+    uint64_t total_cond_m1t_instances = 0;
+    uint64_t total_static_cond_m1n = 0;
+    uint64_t total_cond_m1n_instances = 0; 
+    uint64_t total_static_1_target_call = 0;
+    uint64_t total_1_targ_call_instances = 0; 
+    uint64_t total_static_multi_target_call = 0;
+    uint64_t total_multi_targ_call_instances = 0; 
+    uint64_t total_static_1_target_return = 0;
+    uint64_t total_1_targ_ret_instances = 0; 
+    uint64_t total_static_multi_target_return = 0;
+    uint64_t total_multi_targ_ret_instances = 0;
+    uint64_t total_static_1_target_jump = 0;
+    uint64_t total_1_targ_jump_instances = 0;
+    uint64_t total_static_multi_target_jump = 0;
+    uint64_t total_multi_targ_jump_instances = 0; 
+    
     try {
         processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, btb_size, history_length, limit_percent);
     }
@@ -359,6 +377,7 @@ int main(int argc, char** argv) {
     if (btb_size > 0) std::cout << " BTB Size: " << btb_size;
     std::cout << std::endl;
     bool limit_reached = false;
+    uint64_t limit_rank = 0;
     uint64_t cond_before_limit = 0;
 
     static constexpr int COLUMN_WIDTH = 18;
@@ -460,6 +479,7 @@ int main(int argc, char** argv) {
         running_total += total;
         if (running_total>limit && !limit_reached) {
             std::cout << "---Limit reached---" << std::endl;
+            limit_rank = rank;
             limit_reached = true;
         }
 
@@ -471,29 +491,43 @@ int main(int argc, char** argv) {
 
         if (branch_info.type == BranchType::CONDITIONAL) {
             if (!limit_reached) { cond_before_limit++; }  // Count all conditionals including CATs
-            if (taken && !not_taken) stf::print_utils::printLeft("  CAT", 12);
+            if (taken && !not_taken) {
+                stf::print_utils::printLeft("  CAT", 12);
+                if (!limit_reached) {
+                    total_static_cond_always_taken++;
+                    total_cond_always_taken_instances += total;
+                };
+            }
             else {
                 if (taken && not_taken_after_prefix) {
                     if (branch_info.repeated && branch_info.direction==Direction::BACKWARD) {
                         stf::print_utils::printLeft("C1BBL", 12);
-                        total_static_cond_1bbl++;
-                        total_cond_1bbl_instances += total;
+                        if (!limit_reached) {
+                            total_static_cond_1bbl++;
+                            total_cond_1bbl_instances += total;
+                        }
                     }
                     else if ((branch_info.max_sequential_taken == 1) && (branch_info.max_sequential_not_taken > 1)) {
-                        stf::print_utils::printLeft(" C_P1T", 12);
-                        total_static_cond_dyn++;
-                        total_cond_dyn_instances += total;
+                        stf::print_utils::printLeft(" C_M1T", 12);
+                        if (!limit_reached) {
+                            total_static_cond_m1t++;
+                            total_cond_m1t_instances += total;
+                        }
                     }
                     else if ((branch_info.max_sequential_not_taken == 1) && (branch_info.max_sequential_taken > 1)) {
-                        stf::print_utils::printLeft(" C_P1N", 12);
-                        total_static_cond_dyn++;
-                        total_cond_dyn_instances += total;
+                        stf::print_utils::printLeft(" C_M1N", 12);
+                        if (!limit_reached) {
+                            total_static_cond_m1n++;
+                            total_cond_m1n_instances += total;
+                        }
                     }
                     else
                     {
                         stf::print_utils::printLeft(" CDYN", 12);
-                        total_static_cond_dyn++;
-                        total_cond_dyn_instances += total;
+                        if (!limit_reached) {
+                            total_static_cond_dyn++;
+                            total_cond_dyn_instances += total;
+                        }
                     }
                 }
                 else stf::print_utils::printLeft(" COND", 12);
@@ -502,6 +536,35 @@ int main(int argc, char** argv) {
         else {
             std::cout << branch_info.type;
             stf::print_utils::printSpaces(8);
+            if (!limit_reached) {
+                switch (branch_info.type) {
+                    case BranchType::CALL:
+                        total_static_1_target_call++;
+                        total_1_targ_call_instances += total;
+                        break;
+                    case BranchType::M_CALL:
+                        total_static_multi_target_call++;
+                        total_multi_targ_call_instances += total;
+                        break;
+                    case BranchType::RETURN:
+                        total_static_1_target_return++;
+                        total_1_targ_ret_instances += total;
+                        break;
+                    case BranchType::M_RET:
+                        total_static_multi_target_return++;
+                        total_multi_targ_ret_instances += total;
+                        break;
+                    case BranchType::JUMP:
+                        total_static_1_target_jump++;
+                        total_1_targ_jump_instances += total;
+                        break;
+                    case BranchType::M_JUMP:
+                        total_static_multi_target_jump++;
+                        total_multi_targ_jump_instances += total;
+                        break;
+                    default: break;
+                }
+            }
         }
 /*         switch(branch_info.type) {
             case BranchType::CONDITIONAL:
@@ -834,11 +897,59 @@ int main(int argc, char** argv) {
     }
 
     std::cout << std::endl;
+    std::cout << "Limit: " << (limit_percent * 100) << "%   Limit instances count of all types: " << limit;
+    std::cout << "  Static branch PC Rank at limit: " << limit_rank << std::endl << std::endl;
     std::cout << "Branch Type & Behavior Category Totals prior to limit" << std::endl;
-    std::cout << "Unique (static) Conditional Dynamic:    " << total_static_cond_dyn << std::endl;
-    std::cout << "Total Conditional Dynamic Instances:    " << total_cond_dyn_instances << std::endl;
-    std::cout << "Unique (static) Conditional Self Loops: " << total_static_cond_1bbl << std::endl;
-    std::cout << "Total Conditional Self Loop Instances:  " << total_cond_1bbl_instances << std::endl;
+    stf::print_utils::printLeft("Type & Sub-type", 24);
+    stf::print_utils::printLeft("Unique Static PCs", 24);
+    stf::print_utils::printLeft("Dynamic Instances", 24);
+    std::cout << std::endl;
+    std::cout << "Conditional" << std::endl;
+    stf::print_utils::printLeft("  Varying:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_dyn, 24);
+    stf::print_utils::printDecLeft(total_cond_dyn_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Always Taken:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_always_taken, 24);
+    stf::print_utils::printDecLeft(total_cond_always_taken_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Self Loops:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_1bbl, 24);
+    stf::print_utils::printDecLeft(total_cond_1bbl_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Max Seq 1-Taken:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_m1t, 24);
+    stf::print_utils::printDecLeft(total_cond_m1t_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Max Seq 1-Not-Taken:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_m1n, 24);
+    stf::print_utils::printDecLeft(total_cond_m1n_instances, 24);
+    std::cout << std::endl;
+    std::cout << "Unconditional" << std::endl;
+    stf::print_utils::printLeft("  1-target Call:", 24);
+    stf::print_utils::printDecLeft(total_static_1_target_call, 24);
+    stf::print_utils::printDecLeft(total_1_targ_call_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Multi-target Call:", 24);
+    stf::print_utils::printDecLeft(total_static_multi_target_call, 24);
+    stf::print_utils::printDecLeft(total_multi_targ_call_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  1-target Return:", 24);
+    stf::print_utils::printDecLeft(total_static_1_target_return, 24);
+    stf::print_utils::printDecLeft(total_1_targ_ret_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Multi-target Return:", 24);
+    stf::print_utils::printDecLeft(total_static_multi_target_return, 24);
+    stf::print_utils::printDecLeft(total_multi_targ_ret_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  1-target Jump:", 24);
+    stf::print_utils::printDecLeft(total_static_1_target_jump, 24);
+    stf::print_utils::printDecLeft(total_1_targ_jump_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Multi-target Jump:", 24);
+    stf::print_utils::printDecLeft(total_static_multi_target_jump, 24);
+    stf::print_utils::printDecLeft(total_multi_targ_jump_instances, 24);
+    std::cout << std::endl;
 
     if (entropy_report) {
         std::cout << std::endl << "Histograms of the amounts of unique histories leading to all dynamic conditional branches" << std::endl;
