@@ -17,6 +17,7 @@ void processCommandLine(int argc,
                         bool& only_taken,
                         bool& only_dynamic,
                         bool& skip_non_user,
+                        uint64_t& target_range,
                         uint64_t& btb_size,
                         uint64_t& history_length,
                         double& limit_percent) {
@@ -25,6 +26,7 @@ void processCommandLine(int argc,
     parser.addFlag('t', "only report taken branches (branches that are taken at least once)");
     parser.addFlag('d', "only report dynamic branches (branches that are not always-taken or never-taken)");
     parser.addFlag('u', "skip non user-mode instructions");
+    parser.addFlag('r', "target_range", "Branch PC to Target range used to categorize conditional branches as short or long range. Default > 64 is long range");
     parser.addFlag('b', "btb_size", "report BTB of size btb_size per index branch PC allocations & hits. btb_size must be power of 2. Maxx allowed btb_size = 131072");
     parser.addFlag('e', "history_length", "report branch entropies per history type: local, all TN, conditional TN, PC path, Target path. History length in bits, must be < 64");
     parser.addFlag('l', "limit_percent", "percentage (0.0 < n < 1.0) of all dynamic branch instances less not-taken prefix instances that will be included in summaries");
@@ -34,6 +36,7 @@ void processCommandLine(int argc,
     only_taken = parser.hasArgument('t');
     only_dynamic = parser.hasArgument('d');
     skip_non_user = parser.hasArgument('u');
+    parser.getArgumentValue('r', target_range);
     parser.getArgumentValue('b', btb_size);
     parser.getArgumentValue('e', history_length);
     parser.getArgumentValue('l', limit_percent);
@@ -173,6 +176,7 @@ int main(int argc, char** argv) {
     bool only_taken = false;
     bool only_dynamic = false;
     bool skip_non_user = false;
+    uint64_t target_range = 64;
     uint64_t btb_size = 0;
     double limit_percent;
     BranchType preceding_branch_type = BranchType::INVALID;
@@ -195,7 +199,15 @@ int main(int argc, char** argv) {
     uint64_t total_static_cond_m1t = 0;
     uint64_t total_cond_m1t_instances = 0;
     uint64_t total_static_cond_m1n = 0;
-    uint64_t total_cond_m1n_instances = 0; 
+    uint64_t total_cond_m1n_instances = 0;
+    uint64_t total_static_cond_short_bkwd = 0;
+    uint64_t total_cond_short_bkwd_instances = 0;
+    uint64_t total_static_cond_short_fwd = 0;
+    uint64_t total_cond_short_fwd_instances = 0;
+    uint64_t total_static_cond_long_bkwd = 0;
+    uint64_t total_cond_long_bkwd_instances = 0;
+    uint64_t total_static_cond_long_fwd = 0;
+    uint64_t total_cond_long_fwd_instances = 0;
     uint64_t total_static_1_target_call = 0;
     uint64_t total_1_targ_call_instances = 0; 
     uint64_t total_static_multi_target_call = 0;
@@ -210,7 +222,7 @@ int main(int argc, char** argv) {
     uint64_t total_multi_targ_jump_instances = 0; 
     
     try {
-        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, btb_size, history_length, limit_percent);
+        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, target_range, btb_size, history_length, limit_percent);
     }
     catch(const trace_tools::CommandLineParser::EarlyExitException& e) {
         std::cerr << e.what() << std::endl;
@@ -373,6 +385,7 @@ int main(int argc, char** argv) {
     std::cout << "Total Instances: " << all_total << " Total prefix NTs: " << all_total_prefix;
     uint64_t limit = int(limit_percent*(double)(all_total-all_total_prefix));
     std::cout << "  Limit for summary of instances after prefix: " << limit_percent << " Limit instance count: " << limit;
+    std::cout << " Target long range threshold: " << target_range;
     if (entropy_report) std::cout << " Entropy histories length: " << history_length;
     if (btb_size > 0) std::cout << " BTB Size: " << btb_size;
     std::cout << std::endl;
@@ -391,11 +404,17 @@ int main(int argc, char** argv) {
     stf::print_utils::printLeft("TknPrecedes", 12);
     stf::print_utils::printLeft("IndPrecedes", 12);
     stf::print_utils::printLeft("Repeated", 12);
-    stf::print_utils::printLeft("Targets", 12);
+    stf::print_utils::printLeft("Targets", 10);
     stf::print_utils::printLeft("MaxDistance", 12);
     stf::print_utils::printLeft("Direction", 12);
     stf::print_utils::printLeft("Total Instances", COLUMN_WIDTH);
     stf::print_utils::printLeft("NT Prefix", 12);
+    stf::print_utils::printLeft("Takens", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Not Takens", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Dir Changes", COLUMN_WIDTH);
+    //stf::print_utils::printLeft("Stable Seq Tkns", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Max Seq Takens", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Max Seq NotTkns", COLUMN_WIDTH);
     if (entropy_report) {
         stf::print_utils::printLeft("Loc Hists", 12);
         stf::print_utils::printLeft("Loc Hs Mixed", 14);
@@ -412,13 +431,7 @@ int main(int argc, char** argv) {
         stf::print_utils::printLeft("Glo TgP Hists", 14);
         stf::print_utils::printLeft("Glo TgH Mixed", 14);
         stf::print_utils::printLeft("Glo Tar Entropy", COLUMN_WIDTH); 
-    } 
-    stf::print_utils::printLeft("Takens", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Not Takens", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Dir Changes", COLUMN_WIDTH);
-    //stf::print_utils::printLeft("Stable Seq Tkns", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Max Seq Takens", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Max Seq NotTkns", COLUMN_WIDTH);    
+    }    
     if(verbose) {
         stf::print_utils::printLeft("Target", COLUMN_WIDTH);
         stf::print_utils::printLeft("Traversals", COLUMN_WIDTH);
@@ -489,6 +502,12 @@ int main(int argc, char** argv) {
         stf::print_utils::printHex(pc);
         stf::print_utils::printSpaces(4);
 
+        uint64_t max_distance = 0;
+        for (const auto& [target,count] : branch_info.targets) {
+            uint64_t distance = std::abs((long long)pc - (long long)target);
+            max_distance = (distance > max_distance) ? distance : max_distance;
+        }
+
         if (branch_info.type == BranchType::CONDITIONAL) {
             if (!limit_reached) { cond_before_limit++; }  // Count all conditionals including CATs
             if (taken && !not_taken) {
@@ -501,29 +520,60 @@ int main(int argc, char** argv) {
             else {
                 if (taken && not_taken_after_prefix) {
                     if (branch_info.repeated && branch_info.direction==Direction::BACKWARD) {
-                        stf::print_utils::printLeft("C1BBL", 12);
+                        stf::print_utils::printLeft(" C1BL", 12);
                         if (!limit_reached) {
                             total_static_cond_1bbl++;
                             total_cond_1bbl_instances += total;
-                        }
+                        };
                     }
                     else if ((branch_info.max_sequential_taken == 1) && (branch_info.max_sequential_not_taken > 1)) {
-                        stf::print_utils::printLeft(" C_M1T", 12);
+                        stf::print_utils::printLeft(" CM1T", 12);
                         if (!limit_reached) {
                             total_static_cond_m1t++;
                             total_cond_m1t_instances += total;
-                        }
+                        };
                     }
                     else if ((branch_info.max_sequential_not_taken == 1) && (branch_info.max_sequential_taken > 1)) {
-                        stf::print_utils::printLeft(" C_M1N", 12);
+                        stf::print_utils::printLeft(" CM1N", 12);
                         if (!limit_reached) {
                             total_static_cond_m1n++;
                             total_cond_m1n_instances += total;
-                        }
+                        };
                     }
-                    else
-                    {
-                        stf::print_utils::printLeft(" CDYN", 12);
+                    else if (branch_info.direction == Direction::BACKWARD) {
+                        if (max_distance > target_range) {
+                            stf::print_utils::printLeft(" CVLB", 12);
+                            if (!limit_reached) {
+                                total_static_cond_long_bkwd++;
+                                total_cond_long_bkwd_instances += total;                            
+                            };
+                        }
+                        else {
+                            stf::print_utils::printLeft(" CVSB", 12);
+                            if (!limit_reached) {
+                                total_static_cond_short_bkwd++;
+                                total_cond_short_bkwd_instances += total;                            
+                            };
+                        };
+                    }
+                    else if (branch_info.direction == Direction::FORWARD) {
+                        if (max_distance > target_range) {
+                            stf::print_utils::printLeft(" CVLF", 12);
+                            if (!limit_reached) {
+                                total_static_cond_long_fwd++;
+                                total_cond_long_fwd_instances += total;                            
+                            };
+                        }
+                        else {
+                            stf::print_utils::printLeft(" CVSF", 12);
+                            if (!limit_reached) {
+                                total_static_cond_short_fwd++;
+                                total_cond_short_fwd_instances += total;                            
+                            };
+                        };
+                    }
+                    else {
+                        stf::print_utils::printLeft(" CVar", 12);
                         if (!limit_reached) {
                             total_static_cond_dyn++;
                             total_cond_dyn_instances += total;
@@ -664,13 +714,8 @@ int main(int argc, char** argv) {
             stf::print_utils::printLeft(" n", 12);
         }
 
-        stf::print_utils::printDecLeft(branch_info.targets.size(), 12);
+        stf::print_utils::printDecLeft(branch_info.targets.size(), 10);
 
-        uint64_t max_distance = 0;
-        for (const auto& [target,count] : branch_info.targets) {
-            uint64_t distance = std::abs((long long)pc - (long long)target);
-            max_distance = (distance > max_distance) ? distance : max_distance;
-        }
         if (!branch_info.indirect) {
             stf::print_utils::printSpaces(2);
             stf::print_utils::printHex(max_distance,6);
@@ -694,173 +739,10 @@ int main(int argc, char** argv) {
 
         stf::print_utils::printDecLeft(total, COLUMN_WIDTH);
         stf::print_utils::printDecLeft(branch_info.not_taken_prefix, 12);
-
-    if (entropy_report) {
-
-        if ((branch_info.type==BranchType::CONDITIONAL) && (taken > 0) && (not_taken > 0)) {
-            stf::print_utils::printDecLeft(branch_info.local_histories.size(), 12);
-            num_loc_histories_hist[branch_info.local_histories.size()]++;
-            uint64_t mixed_hists = 0;
-            double branch_entropy_sum = 0.0;
-            double avg_branch_entropy = 0.0;
-            for (const auto& pair : branch_info.local_histories) {
-
-                if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
-                    mixed_hists++;
-                }
-                double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
-                double prob_taken = (double)pair.second.taken / hist_instances;
-                double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
-                branch_entropy_sum += hist_instances * hist_entropy;
-            }
-            avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken + not_taken), 0.0);  // max guards against rounding to -0.n
-            if (!limit_reached) {
-                uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards array bound
-                local_entropy_hist[decile]++;
-                if (avg_branch_entropy > max_local_entropy) {
-                    max_local_entropy = avg_branch_entropy;
-                    max_local_ent_rank = rank;
-                    max_local_ent_pc = pc;
-                }
-            }
-            stf::print_utils::printDecLeft(mixed_hists, 14);
-            std::cout << std::fixed << std::setprecision(4) << avg_branch_entropy;
-            stf::print_utils::printSpaces(COLUMN_WIDTH-6);
-
-            stf::print_utils::printDecLeft(branch_info.global_dir_histories.size(), 14);
-            num_glo_histories_hist[branch_info.global_dir_histories.size()]++;
-            mixed_hists = 0;
-            branch_entropy_sum = 0;
-            for (const auto& pair : branch_info.global_dir_histories) {
-
-                if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
-                    mixed_hists++;
-                }
-                double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
-                double prob_taken = (double)pair.second.taken / hist_instances;
-                double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
-                branch_entropy_sum += hist_instances * hist_entropy;
-            }
-            avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
-            if (!limit_reached) {
-                uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards array bound
-                glo_dir_entropy_hist[decile]++;
-                if (avg_branch_entropy > max_glo_dir_entropy) {
-                    max_glo_dir_entropy = avg_branch_entropy;
-                    max_glo_dir_ent_rank = rank;
-                    max_glo_dir_ent_pc = pc;
-                }
-            }
-            stf::print_utils::printDecLeft(mixed_hists, 14);
-            std::cout << avg_branch_entropy;
-            stf::print_utils::printSpaces(COLUMN_WIDTH-6);
-
-            stf::print_utils::printDecLeft(branch_info.cond_dir_histories.size(), 14);
-            num_cond_histories_hist[branch_info.cond_dir_histories.size()]++;
-            mixed_hists = 0;
-            branch_entropy_sum = 0;
-            for (const auto& pair : branch_info.cond_dir_histories) {
-
-                if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
-                    mixed_hists++;
-                }
-                double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
-                double prob_taken = (double)pair.second.taken / hist_instances;
-                double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
-                branch_entropy_sum += hist_instances * hist_entropy;
-            }
-            avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
-            if (!limit_reached) {
-                uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards against array bound
-                cond_entropy_hist[decile]++;
-                if (avg_branch_entropy > max_cond_entropy) {
-                    max_cond_entropy = avg_branch_entropy;
-                    max_cond_ent_rank = rank;
-                    max_cond_ent_pc = pc;
-                }
-            }               
-            stf::print_utils::printDecLeft(mixed_hists, 14);
-            std::cout << avg_branch_entropy;
-            stf::print_utils::printSpaces(COLUMN_WIDTH-6);
-            
-            stf::print_utils::printDecLeft(branch_info.global_path_histories.size(), 14);
-            num_path_histories_hist[branch_info.global_path_histories.size()]++;
-            mixed_hists = 0;
-            branch_entropy_sum = 0;
-            for (const auto& pair : branch_info.global_path_histories) {
-
-                if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
-                    mixed_hists++;
-                }
-                double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
-                double prob_taken = (double)pair.second.taken / hist_instances;
-                double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
-                branch_entropy_sum += hist_instances * hist_entropy;
-            }
-            avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
-            if (!limit_reached) {
-                uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards against array bound
-                glo_path_entropy_hist[decile]++;
-                if (avg_branch_entropy > max_glo_path_entropy) {
-                    max_glo_path_entropy = avg_branch_entropy;
-                    max_glo_path_ent_rank = rank;
-                    max_glo_path_ent_pc = pc;
-                }
-            }
-            stf::print_utils::printDecLeft(mixed_hists, 14);
-            std::cout << avg_branch_entropy;
-            stf::print_utils::printSpaces(COLUMN_WIDTH-6);
-
-            stf::print_utils::printDecLeft(branch_info.global_targ_histories.size(), 14);
-            num_targ_histories_hist[branch_info.global_targ_histories.size()]++;
-            mixed_hists = 0;
-            branch_entropy_sum = 0;
-            for (const auto& pair : branch_info.global_targ_histories) {
-
-                if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
-                    mixed_hists++;
-                }
-                double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
-                double prob_taken = (double)pair.second.taken / hist_instances;
-                double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
-                branch_entropy_sum += hist_instances * hist_entropy;
-            }
-            avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
-            if (!limit_reached) {
-                uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards against array bound
-                glo_targ_entropy_hist[decile]++;
-                if (avg_branch_entropy > max_glo_targ_entropy) {
-                    max_glo_targ_entropy = avg_branch_entropy;
-                    max_glo_targ_ent_rank = rank;
-                    max_glo_targ_ent_pc = pc;
-                }
-            }
-            stf::print_utils::printDecLeft(mixed_hists, 14);
-            std::cout << avg_branch_entropy;
-            stf::print_utils::printSpaces(COLUMN_WIDTH-6);
-
-        }
-        else {
-            stf::print_utils::printLeft("-", 12);
-            stf::print_utils::printLeft("-", 14);
-            stf::print_utils::printLeft("-", COLUMN_WIDTH);
-            stf::print_utils::printLeft("-", 14);
-            stf::print_utils::printLeft("-", 14);
-            stf::print_utils::printLeft("-", COLUMN_WIDTH);
-            stf::print_utils::printLeft("-", 14);
-            stf::print_utils::printLeft("-", 14);
-            stf::print_utils::printLeft("-", COLUMN_WIDTH);
-            stf::print_utils::printLeft("-", 14);
-            stf::print_utils::printLeft("-", 14);
-            stf::print_utils::printLeft("-", COLUMN_WIDTH);
-            stf::print_utils::printLeft("-", 14);
-            stf::print_utils::printLeft("-", 14);
-            stf::print_utils::printLeft("-", COLUMN_WIDTH);
-        }
-    }
         stf::print_utils::printDecLeft(taken, COLUMN_WIDTH);
         stf::print_utils::printDecLeft(not_taken, COLUMN_WIDTH);
         stf::print_utils::printDecLeft(branch_info.direction_changes, COLUMN_WIDTH);
+
         if (taken && not_taken) {
  /*            if (branch_info.stable_seq_taken) {
                 stf::print_utils::printLeft('Y', COLUMN_WIDTH);
@@ -875,6 +757,170 @@ int main(int argc, char** argv) {
             //stf::print_utils::printLeft("-", COLUMN_WIDTH);
             stf::print_utils::printLeft("-", COLUMN_WIDTH);
             stf::print_utils::printLeft("-", COLUMN_WIDTH);
+        }
+
+        if (entropy_report) {
+
+            if ((branch_info.type==BranchType::CONDITIONAL) && (taken > 0) && (not_taken > 0)) {
+                stf::print_utils::printDecLeft(branch_info.local_histories.size(), 12);
+                num_loc_histories_hist[branch_info.local_histories.size()]++;
+                uint64_t mixed_hists = 0;
+                double branch_entropy_sum = 0.0;
+                double avg_branch_entropy = 0.0;
+                for (const auto& pair : branch_info.local_histories) {
+
+                    if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
+                        mixed_hists++;
+                    }
+                    double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
+                    double prob_taken = (double)pair.second.taken / hist_instances;
+                    double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
+                    branch_entropy_sum += hist_instances * hist_entropy;
+                }
+                avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken + not_taken), 0.0);  // max guards against rounding to -0.n
+                if (!limit_reached) {
+                    uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards array bound
+                    local_entropy_hist[decile]++;
+                    if (avg_branch_entropy > max_local_entropy) {
+                        max_local_entropy = avg_branch_entropy;
+                        max_local_ent_rank = rank;
+                        max_local_ent_pc = pc;
+                    }
+                }
+                stf::print_utils::printDecLeft(mixed_hists, 14);
+                std::cout << std::fixed << std::setprecision(4) << avg_branch_entropy;
+                stf::print_utils::printSpaces(COLUMN_WIDTH-6);
+
+                stf::print_utils::printDecLeft(branch_info.global_dir_histories.size(), 14);
+                num_glo_histories_hist[branch_info.global_dir_histories.size()]++;
+                mixed_hists = 0;
+                branch_entropy_sum = 0;
+                for (const auto& pair : branch_info.global_dir_histories) {
+
+                    if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
+                        mixed_hists++;
+                    }
+                    double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
+                    double prob_taken = (double)pair.second.taken / hist_instances;
+                    double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
+                    branch_entropy_sum += hist_instances * hist_entropy;
+                }
+                avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
+                if (!limit_reached) {
+                    uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards array bound
+                    glo_dir_entropy_hist[decile]++;
+                    if (avg_branch_entropy > max_glo_dir_entropy) {
+                        max_glo_dir_entropy = avg_branch_entropy;
+                        max_glo_dir_ent_rank = rank;
+                        max_glo_dir_ent_pc = pc;
+                    }
+                }
+                stf::print_utils::printDecLeft(mixed_hists, 14);
+                std::cout << avg_branch_entropy;
+                stf::print_utils::printSpaces(COLUMN_WIDTH-6);
+
+                stf::print_utils::printDecLeft(branch_info.cond_dir_histories.size(), 14);
+                num_cond_histories_hist[branch_info.cond_dir_histories.size()]++;
+                mixed_hists = 0;
+                branch_entropy_sum = 0;
+                for (const auto& pair : branch_info.cond_dir_histories) {
+
+                    if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
+                        mixed_hists++;
+                    }
+                    double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
+                    double prob_taken = (double)pair.second.taken / hist_instances;
+                    double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
+                    branch_entropy_sum += hist_instances * hist_entropy;
+                }
+                avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
+                if (!limit_reached) {
+                    uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards against array bound
+                    cond_entropy_hist[decile]++;
+                    if (avg_branch_entropy > max_cond_entropy) {
+                        max_cond_entropy = avg_branch_entropy;
+                        max_cond_ent_rank = rank;
+                        max_cond_ent_pc = pc;
+                    }
+                }               
+                stf::print_utils::printDecLeft(mixed_hists, 14);
+                std::cout << avg_branch_entropy;
+                stf::print_utils::printSpaces(COLUMN_WIDTH-6);
+                
+                stf::print_utils::printDecLeft(branch_info.global_path_histories.size(), 14);
+                num_path_histories_hist[branch_info.global_path_histories.size()]++;
+                mixed_hists = 0;
+                branch_entropy_sum = 0;
+                for (const auto& pair : branch_info.global_path_histories) {
+
+                    if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
+                        mixed_hists++;
+                    }
+                    double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
+                    double prob_taken = (double)pair.second.taken / hist_instances;
+                    double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
+                    branch_entropy_sum += hist_instances * hist_entropy;
+                }
+                avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
+                if (!limit_reached) {
+                    uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards against array bound
+                    glo_path_entropy_hist[decile]++;
+                    if (avg_branch_entropy > max_glo_path_entropy) {
+                        max_glo_path_entropy = avg_branch_entropy;
+                        max_glo_path_ent_rank = rank;
+                        max_glo_path_ent_pc = pc;
+                    }
+                }
+                stf::print_utils::printDecLeft(mixed_hists, 14);
+                std::cout << avg_branch_entropy;
+                stf::print_utils::printSpaces(COLUMN_WIDTH-6);
+
+                stf::print_utils::printDecLeft(branch_info.global_targ_histories.size(), 14);
+                num_targ_histories_hist[branch_info.global_targ_histories.size()]++;
+                mixed_hists = 0;
+                branch_entropy_sum = 0;
+                for (const auto& pair : branch_info.global_targ_histories) {
+
+                    if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
+                        mixed_hists++;
+                    }
+                    double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
+                    double prob_taken = (double)pair.second.taken / hist_instances;
+                    double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
+                    branch_entropy_sum += hist_instances * hist_entropy;
+                }
+                avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
+                if (!limit_reached) {
+                    uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards against array bound
+                    glo_targ_entropy_hist[decile]++;
+                    if (avg_branch_entropy > max_glo_targ_entropy) {
+                        max_glo_targ_entropy = avg_branch_entropy;
+                        max_glo_targ_ent_rank = rank;
+                        max_glo_targ_ent_pc = pc;
+                    }
+                }
+                stf::print_utils::printDecLeft(mixed_hists, 14);
+                std::cout << avg_branch_entropy;
+                stf::print_utils::printSpaces(COLUMN_WIDTH-6);
+
+            }
+            else {
+                stf::print_utils::printLeft("-", 12);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", COLUMN_WIDTH);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", COLUMN_WIDTH);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", COLUMN_WIDTH);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", COLUMN_WIDTH);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", COLUMN_WIDTH);
+            }
         }
 
         if(verbose) {
@@ -899,16 +945,12 @@ int main(int argc, char** argv) {
     std::cout << std::endl;
     std::cout << "Limit: " << (limit_percent * 100) << "%   Limit instances count of all types: " << limit;
     std::cout << "  Static branch PC Rank at limit: " << limit_rank << std::endl << std::endl;
-    std::cout << "Branch Type & Behavior Category Totals prior to limit" << std::endl;
+    std::cout << "Branch Type & Behavior Category Totals prior to limit. Short/Long Threshold: " << target_range << std::endl;
     stf::print_utils::printLeft("Type & Sub-type", 24);
     stf::print_utils::printLeft("Unique Static PCs", 24);
     stf::print_utils::printLeft("Dynamic Instances", 24);
     std::cout << std::endl;
     std::cout << "Conditional" << std::endl;
-    stf::print_utils::printLeft("  Varying:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_dyn, 24);
-    stf::print_utils::printDecLeft(total_cond_dyn_instances, 24);
-    std::cout << std::endl;
     stf::print_utils::printLeft("  Always Taken:", 24);
     stf::print_utils::printDecLeft(total_static_cond_always_taken, 24);
     stf::print_utils::printDecLeft(total_cond_always_taken_instances, 24);
@@ -925,6 +967,27 @@ int main(int argc, char** argv) {
     stf::print_utils::printDecLeft(total_static_cond_m1n, 24);
     stf::print_utils::printDecLeft(total_cond_m1n_instances, 24);
     std::cout << std::endl;
+    stf::print_utils::printLeft("  Short Backward:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_short_bkwd, 24);
+    stf::print_utils::printDecLeft(total_cond_short_bkwd_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Short Forward:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_short_fwd, 24);
+    stf::print_utils::printDecLeft(total_cond_short_fwd_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Long Backward:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_long_bkwd, 24);
+    stf::print_utils::printDecLeft(total_cond_long_bkwd_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Long Forward:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_long_fwd, 24);
+    stf::print_utils::printDecLeft(total_cond_long_fwd_instances, 24);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Other:", 24);
+    stf::print_utils::printDecLeft(total_static_cond_dyn, 24);
+    stf::print_utils::printDecLeft(total_cond_dyn_instances, 24);
+    std::cout << std::endl;
+
     std::cout << "Unconditional" << std::endl;
     stf::print_utils::printLeft("  1-target Call:", 24);
     stf::print_utils::printDecLeft(total_static_1_target_call, 24);
