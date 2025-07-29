@@ -983,10 +983,10 @@ int main(int argc, char** argv) {
     stf::print_utils::printDecLeft(total_static_cond_long_fwd, 24);
     stf::print_utils::printDecLeft(total_cond_long_fwd_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Other:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_dyn, 24);
-    stf::print_utils::printDecLeft(total_cond_dyn_instances, 24);
-    std::cout << std::endl;
+    // stf::print_utils::printLeft("  Other:", 24);
+    // stf::print_utils::printDecLeft(total_static_cond_dyn, 24);
+    // stf::print_utils::printDecLeft(total_cond_dyn_instances, 24);
+    // std::cout << std::endl;
 
     std::cout << "Unconditional" << std::endl;
     stf::print_utils::printLeft("  1-target Call:", 24);
