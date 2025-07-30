@@ -490,6 +490,8 @@ int main(int argc, char** argv) {
         const auto total = taken + not_taken;
         
         running_total += total;
+        rank++;
+
         if (running_total>limit && !limit_reached) {
             std::cout << "---Limit reached---" << std::endl;
             limit_rank = rank;
@@ -498,7 +500,7 @@ int main(int argc, char** argv) {
 
         stf_assert(total, "Invalid branch behavior for pc " << std::hex << pc);
 
-        stf::print_utils::printDecLeft(++rank, 6);
+        stf::print_utils::printDecLeft(rank, 6);
         stf::print_utils::printHex(pc);
         stf::print_utils::printSpaces(4);
 
@@ -947,39 +949,39 @@ int main(int argc, char** argv) {
     std::cout << "  Static branch PC Rank at limit: " << limit_rank << std::endl << std::endl;
     std::cout << "Branch Type & Behavior Category Totals prior to limit. Short/Long Threshold: " << target_range << std::endl;
     stf::print_utils::printLeft("Type & Sub-type", 24);
-    stf::print_utils::printLeft("Unique Static PCs", 24);
-    stf::print_utils::printLeft("Dynamic Instances", 24);
+    stf::print_utils::printLeft("Unique_Static_PCs", 24);
+    stf::print_utils::printLeft("Dynamic_Instances", 24);
     std::cout << std::endl;
     std::cout << "Conditional" << std::endl;
-    stf::print_utils::printLeft("  Always Taken:", 24);
+    stf::print_utils::printLeft("  Always_Taken:", 24);
     stf::print_utils::printDecLeft(total_static_cond_always_taken, 24);
     stf::print_utils::printDecLeft(total_cond_always_taken_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Self Loops:", 24);
+    stf::print_utils::printLeft("  Self_Loops:", 24);
     stf::print_utils::printDecLeft(total_static_cond_1bbl, 24);
     stf::print_utils::printDecLeft(total_cond_1bbl_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Max Seq 1-Taken:", 24);
+    stf::print_utils::printLeft("  Max_Seq_1-Taken:", 24);
     stf::print_utils::printDecLeft(total_static_cond_m1t, 24);
     stf::print_utils::printDecLeft(total_cond_m1t_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Max Seq 1-Not-Taken:", 24);
+    stf::print_utils::printLeft("  Max_Seq_1-Not-Taken:", 24);
     stf::print_utils::printDecLeft(total_static_cond_m1n, 24);
     stf::print_utils::printDecLeft(total_cond_m1n_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Short Backward:", 24);
+    stf::print_utils::printLeft("  Short_Backward:", 24);
     stf::print_utils::printDecLeft(total_static_cond_short_bkwd, 24);
     stf::print_utils::printDecLeft(total_cond_short_bkwd_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Short Forward:", 24);
+    stf::print_utils::printLeft("  Short_Forward:", 24);
     stf::print_utils::printDecLeft(total_static_cond_short_fwd, 24);
     stf::print_utils::printDecLeft(total_cond_short_fwd_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Long Backward:", 24);
+    stf::print_utils::printLeft("  Long_Backward:", 24);
     stf::print_utils::printDecLeft(total_static_cond_long_bkwd, 24);
     stf::print_utils::printDecLeft(total_cond_long_bkwd_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Long Forward:", 24);
+    stf::print_utils::printLeft("  Long_Forward:", 24);
     stf::print_utils::printDecLeft(total_static_cond_long_fwd, 24);
     stf::print_utils::printDecLeft(total_cond_long_fwd_instances, 24);
     std::cout << std::endl;
@@ -989,27 +991,27 @@ int main(int argc, char** argv) {
     // std::cout << std::endl;
 
     std::cout << "Unconditional" << std::endl;
-    stf::print_utils::printLeft("  1-target Call:", 24);
+    stf::print_utils::printLeft("  1-target_Call:", 24);
     stf::print_utils::printDecLeft(total_static_1_target_call, 24);
     stf::print_utils::printDecLeft(total_1_targ_call_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Multi-target Call:", 24);
+    stf::print_utils::printLeft("  Multi-target_Call:", 24);
     stf::print_utils::printDecLeft(total_static_multi_target_call, 24);
     stf::print_utils::printDecLeft(total_multi_targ_call_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  1-target Return:", 24);
+    stf::print_utils::printLeft("  1-target_Return:", 24);
     stf::print_utils::printDecLeft(total_static_1_target_return, 24);
     stf::print_utils::printDecLeft(total_1_targ_ret_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Multi-target Return:", 24);
+    stf::print_utils::printLeft("  Multi-target_Return:", 24);
     stf::print_utils::printDecLeft(total_static_multi_target_return, 24);
     stf::print_utils::printDecLeft(total_multi_targ_ret_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  1-target Jump:", 24);
+    stf::print_utils::printLeft("  1-target_Jump:", 24);
     stf::print_utils::printDecLeft(total_static_1_target_jump, 24);
     stf::print_utils::printDecLeft(total_1_targ_jump_instances, 24);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Multi-target Jump:", 24);
+    stf::print_utils::printLeft("  Multi-target_Jump:", 24);
     stf::print_utils::printDecLeft(total_static_multi_target_jump, 24);
     stf::print_utils::printDecLeft(total_multi_targ_jump_instances, 24);
     std::cout << std::endl;
