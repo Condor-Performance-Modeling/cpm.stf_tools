@@ -492,12 +492,6 @@ int main(int argc, char** argv) {
         running_total += total;
         rank++;
 
-        if (running_total>limit && !limit_reached) {
-            std::cout << "---Limit reached---" << std::endl;
-            limit_rank = rank;
-            limit_reached = true;
-        }
-
         stf_assert(total, "Invalid branch behavior for pc " << std::hex << pc);
 
         stf::print_utils::printDecLeft(rank, 6);
@@ -941,6 +935,12 @@ int main(int argc, char** argv) {
             }
         }
         std::cout << std::endl;
+
+        if (running_total>limit && !limit_reached) {
+            std::cout << "---Limit reached---" << std::endl;
+            limit_rank = rank;
+            limit_reached = true;
+        }
 
     }
 
