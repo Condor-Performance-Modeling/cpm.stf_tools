@@ -166,6 +166,7 @@ struct BranchInfo {
     bool stable_seq_taken = true;
     bool indirect = false;
     bool repeated = false;
+    bool repeated_taken = false;
     Direction direction = Direction::INVALID;
     BranchType type = BranchType::INVALID;
 };
@@ -194,10 +195,14 @@ int main(int argc, char** argv) {
     uint64_t total_cond_dyn_instances = 0;
     uint64_t total_static_cond_always_taken = 0;
     uint64_t total_cond_always_taken_instances = 0;
-    uint64_t total_static_cond_1bbl_long = 0;
-    uint64_t total_cond_1bbl_long_instances = 0;
-    uint64_t total_static_cond_1bbl_short = 0;
-    uint64_t total_cond_1bbl_short_instances = 0;
+    uint64_t total_static_cond_selfloop_long = 0;
+    uint64_t total_cond_selfloop_long_instances = 0;
+    uint64_t total_static_cond_selfloop_short = 0;
+    uint64_t total_cond_selfloop_short_instances = 0;
+    uint64_t total_static_cond_containloop_long = 0;
+    uint64_t total_cond_containloop_long_instances = 0;
+    uint64_t total_static_cond_containloop_short = 0;
+    uint64_t total_cond_containloop_short_instances = 0;
     uint64_t total_static_cond_m1t = 0;
     uint64_t total_cond_m1t_instances = 0;
     uint64_t total_static_cond_m1n = 0;
@@ -301,7 +306,7 @@ int main(int argc, char** argv) {
         branch_info.targets[branch.getTargetPC()] += is_taken;
         branch_info.indirect = branch.isIndirect();
         branch_info.repeated |= (branch.getPC()==preceding_branch_pc);
-
+        branch_info.repeated_taken |= (branch.getPC()==preceding_taken_branch_pc);
         
         branch_info.precedent_types[preceding_branch_type]++;
         branch_info.precedents[preceding_branch_pc]++;
@@ -397,42 +402,42 @@ int main(int argc, char** argv) {
 
     static constexpr int COLUMN_WIDTH = 18;
     stf::print_utils::printLeft("Rank", 6);
-    stf::print_utils::printLeft("Instr PC", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Instr_PC", COLUMN_WIDTH);
     stf::print_utils::printLeft("Type/Behav", 12);
     //stf::print_utils::printLeft("Behavior", 12);
     stf::print_utils::printLeft("PrePrecedes", 12);    
     stf::print_utils::printLeft("Precedents", 12);
-    stf::print_utils::printLeft("Prec. Types", 12);
+    stf::print_utils::printLeft("Prec_Types", 12);
     stf::print_utils::printLeft("TknPrecedes", 12);
     stf::print_utils::printLeft("IndPrecedes", 12);
     stf::print_utils::printLeft("Repeated", 12);
     stf::print_utils::printLeft("Targets", 10);
     stf::print_utils::printLeft("MaxDistance", 12);
     stf::print_utils::printLeft("Direction", 12);
-    stf::print_utils::printLeft("Total Instances", COLUMN_WIDTH);
-    stf::print_utils::printLeft("NT Prefix", 12);
+    stf::print_utils::printLeft("Total_Instances", COLUMN_WIDTH);
+    stf::print_utils::printLeft("NT_Prefix", 12);
     stf::print_utils::printLeft("Takens", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Not Takens", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Dir Changes", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Not_Takens", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Dir_Changes", COLUMN_WIDTH);
     //stf::print_utils::printLeft("Stable Seq Tkns", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Max Seq Takens", COLUMN_WIDTH);
-    stf::print_utils::printLeft("Max Seq NotTkns", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Max_Seq_Takens", COLUMN_WIDTH);
+    stf::print_utils::printLeft("Max_Seq_NotTkns", COLUMN_WIDTH);
     if (entropy_report) {
-        stf::print_utils::printLeft("Loc Hists", 12);
-        stf::print_utils::printLeft("Loc Hs Mixed", 14);
-        stf::print_utils::printLeft("Loc Entropy", COLUMN_WIDTH);
-        stf::print_utils::printLeft("Glo Dir Hists", 14);
-        stf::print_utils::printLeft("Glo Hs Mixed", 14);
-        stf::print_utils::printLeft("Glo Dir Entropy", COLUMN_WIDTH);  
-        stf::print_utils::printLeft("Cnd Dir Hists", 14); 
-        stf::print_utils::printLeft("Cnd Hs Mixed", 14);
-        stf::print_utils::printLeft("Cnd Dir Entropy", COLUMN_WIDTH);
-        stf::print_utils::printLeft("Glo PcP Hists", 14);
-        stf::print_utils::printLeft("Glo PcH Mixed", 14);
-        stf::print_utils::printLeft("Glo PC Entropy", COLUMN_WIDTH);
-        stf::print_utils::printLeft("Glo TgP Hists", 14);
-        stf::print_utils::printLeft("Glo TgH Mixed", 14);
-        stf::print_utils::printLeft("Glo Tar Entropy", COLUMN_WIDTH); 
+        stf::print_utils::printLeft("Loc_Hists", 12);
+        stf::print_utils::printLeft("Loc_Hs_Mixed", 14);
+        stf::print_utils::printLeft("Loc_Entropy", COLUMN_WIDTH);
+        stf::print_utils::printLeft("Glo_Dir_Hists", 14);
+        stf::print_utils::printLeft("Glo_Hs_Mixed", 14);
+        stf::print_utils::printLeft("Glo_Dir_Entropy", COLUMN_WIDTH);  
+        stf::print_utils::printLeft("Cnd_Dir_Hists", 14); 
+        stf::print_utils::printLeft("Cnd_Hs_Mixed", 14);
+        stf::print_utils::printLeft("Cnd_Dir_Entropy", COLUMN_WIDTH);
+        stf::print_utils::printLeft("Glo_PcP_Hists", 14);
+        stf::print_utils::printLeft("Glo_PcH_Mixed", 14);
+        stf::print_utils::printLeft("Glo_PC_Entropy", COLUMN_WIDTH);
+        stf::print_utils::printLeft("Glo_TgP_Hists", 14);
+        stf::print_utils::printLeft("Glo_TgH_Mixed", 14);
+        stf::print_utils::printLeft("Glo_Tar_Entropy", COLUMN_WIDTH); 
     }    
     if(verbose) {
         stf::print_utils::printLeft("Target", COLUMN_WIDTH);
@@ -517,19 +522,36 @@ int main(int argc, char** argv) {
             }
             else {
                 if (taken && not_taken_after_prefix) {
+                    // repeated must be checked before repeated_taken, otherwise all loops will be repeated_taken
                     if (branch_info.repeated && branch_info.direction==Direction::BACKWARD) {
                         if (max_distance > target_range) {
                             stf::print_utils::printLeft(" CSLL", 12);
                             if (!limit_reached) {
-                                total_static_cond_1bbl_long++;
-                                total_cond_1bbl_long_instances += total;
+                                total_static_cond_selfloop_long++;
+                                total_cond_selfloop_long_instances += total;
                             };
                         }
                         else {
                             stf::print_utils::printLeft(" CSLS", 12);
                             if (!limit_reached) {
-                                total_static_cond_1bbl_short++;
-                                total_cond_1bbl_short_instances += total;
+                                total_static_cond_selfloop_short++;
+                                total_cond_selfloop_short_instances += total;
+                            };                            
+                        };
+                    }
+                    else if (branch_info.repeated_taken && branch_info.direction==Direction::BACKWARD) { 
+                        if (max_distance > target_range) {
+                            stf::print_utils::printLeft(" CCLL", 12);
+                            if (!limit_reached) {
+                                total_static_cond_containloop_long++;
+                                total_cond_containloop_long_instances += total;
+                            };
+                        }
+                        else {
+                            stf::print_utils::printLeft(" CCLS", 12);
+                            if (!limit_reached) {
+                                total_static_cond_containloop_short++;
+                                total_cond_containloop_short_instances += total;
                             };                            
                         };
                     }
@@ -587,7 +609,12 @@ int main(int argc, char** argv) {
                         }
                     }
                 }
-                else stf::print_utils::printLeft(" COND", 12);
+                else {
+                    if (!taken)
+                        stf::print_utils::printLeft(" CNvr", 12);
+                    else
+                        stf::print_utils::printLeft(" COND", 12);
+                }
             }
         }
         else {
@@ -712,13 +739,15 @@ int main(int argc, char** argv) {
         else
             stf::print_utils::printDecLeft(branch_info.indirect_precedents.size(), 12);
     
-        if(branch_info.repeated) {
-            if (branch_info.direction==Direction::FORWARD) stf::print_utils::printLeft("Y->", 12);
-            else if (branch_info.direction==Direction::BACKWARD) stf::print_utils::printLeft("<-Y", 12);
-            else stf::print_utils::printLeft("<Y>", 12);
+        if(branch_info.repeated || branch_info.repeated_taken) { 
+            if (branch_info.repeated_taken) stf::print_utils::printLeft("C ");  // 'C' for repeat Contains non-self not-takens
+            else stf::print_utils::printLeft("s ");  // 'S' for self repeat i.e., no intervening not-taken branches
+            if (branch_info.direction==Direction::FORWARD) stf::print_utils::printLeft("Y->", 10);
+            else if (branch_info.direction==Direction::BACKWARD) stf::print_utils::printLeft("<-Y", 10);
+            else stf::print_utils::printLeft("<Y>", 10);
         }
         else {
-            stf::print_utils::printLeft(" n", 12);
+            stf::print_utils::printLeft("   n", 12);
         }
 
         stf::print_utils::printDecLeft(branch_info.targets.size(), 10);
@@ -959,46 +988,54 @@ int main(int argc, char** argv) {
     std::cout << "Limit: " << (limit_percent * 100) << "%   Limit instances count of all types: " << limit;
     std::cout << "  Static branch PC Rank at limit: " << limit_rank << std::endl << std::endl;
     std::cout << "Branch Type & Behavior Category Totals prior to limit. Short/Long Threshold: " << target_range << std::endl;
-    stf::print_utils::printLeft("Type & Sub-type", 24);
-    stf::print_utils::printLeft("Unique_Static_PCs", 24);
-    stf::print_utils::printLeft("Dynamic_Instances", 24);
+    stf::print_utils::printLeft("Type & Sub-type", 28);
+    stf::print_utils::printLeft("Unique_Static_PCs", 20);
+    stf::print_utils::printLeft("Dynamic_Instances", 20);
     std::cout << std::endl;
     std::cout << "Conditional" << std::endl;
-    stf::print_utils::printLeft("  Always_Taken:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_always_taken, 24);
-    stf::print_utils::printDecLeft(total_cond_always_taken_instances, 24);
+    stf::print_utils::printLeft("  Always_Taken:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_always_taken, 20);
+    stf::print_utils::printDecLeft(total_cond_always_taken_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Short_Self_Loops:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_1bbl_short, 24);
-    stf::print_utils::printDecLeft(total_cond_1bbl_short_instances, 24);
+    stf::print_utils::printLeft("  Short_Self_Loops:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_selfloop_short, 20);
+    stf::print_utils::printDecLeft(total_cond_selfloop_short_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Long_Self_Loops:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_1bbl_long, 24);
-    stf::print_utils::printDecLeft(total_cond_1bbl_long_instances, 24);
+    stf::print_utils::printLeft("  Long_Self_Loops:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_selfloop_long, 20);
+    stf::print_utils::printDecLeft(total_cond_selfloop_long_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Max_Seq_1_Taken:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_m1t, 24);
-    stf::print_utils::printDecLeft(total_cond_m1t_instances, 24);
+    stf::print_utils::printLeft("  Short_Contains_NTs_Loops:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_containloop_short, 20);
+    stf::print_utils::printDecLeft(total_cond_containloop_short_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Max_Seq_1_Not_Taken:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_m1n, 24);
-    stf::print_utils::printDecLeft(total_cond_m1n_instances, 24);
+    stf::print_utils::printLeft("  Long_Contains_NTs_Loops:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_containloop_long, 20);
+    stf::print_utils::printDecLeft(total_cond_containloop_long_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Short_Backward:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_short_bkwd, 24);
-    stf::print_utils::printDecLeft(total_cond_short_bkwd_instances, 24);
+    stf::print_utils::printLeft("  Max_Seq_1_Taken:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_m1t, 20);
+    stf::print_utils::printDecLeft(total_cond_m1t_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Short_Forward:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_short_fwd, 24);
-    stf::print_utils::printDecLeft(total_cond_short_fwd_instances, 24);
+    stf::print_utils::printLeft("  Max_Seq_1_Not_Taken:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_m1n, 20);
+    stf::print_utils::printDecLeft(total_cond_m1n_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Long_Backward:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_long_bkwd, 24);
-    stf::print_utils::printDecLeft(total_cond_long_bkwd_instances, 24);
+    stf::print_utils::printLeft("  Short_Backward:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_short_bkwd, 20);
+    stf::print_utils::printDecLeft(total_cond_short_bkwd_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Long_Forward:", 24);
-    stf::print_utils::printDecLeft(total_static_cond_long_fwd, 24);
-    stf::print_utils::printDecLeft(total_cond_long_fwd_instances, 24);
+    stf::print_utils::printLeft("  Short_Forward:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_short_fwd, 20);
+    stf::print_utils::printDecLeft(total_cond_short_fwd_instances, 20);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Long_Backward:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_long_bkwd, 20);
+    stf::print_utils::printDecLeft(total_cond_long_bkwd_instances, 20);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Long_Forward:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_long_fwd, 20);
+    stf::print_utils::printDecLeft(total_cond_long_fwd_instances, 20);
     std::cout << std::endl;
     // Unneeded. The current categorization of conditional loops is exhaustive
     // stf::print_utils::printLeft("  Other:", 24);
@@ -1007,29 +1044,29 @@ int main(int argc, char** argv) {
     // std::cout << std::endl;
 
     std::cout << "Unconditional" << std::endl;
-    stf::print_utils::printLeft("  1_Target_Call:", 24);
-    stf::print_utils::printDecLeft(total_static_1_target_call, 24);
-    stf::print_utils::printDecLeft(total_1_targ_call_instances, 24);
+    stf::print_utils::printLeft("  1_Target_Call:", 28);
+    stf::print_utils::printDecLeft(total_static_1_target_call, 20);
+    stf::print_utils::printDecLeft(total_1_targ_call_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Multi_Target_Call:", 24);
-    stf::print_utils::printDecLeft(total_static_multi_target_call, 24);
-    stf::print_utils::printDecLeft(total_multi_targ_call_instances, 24);
+    stf::print_utils::printLeft("  Multi_Target_Call:", 28);
+    stf::print_utils::printDecLeft(total_static_multi_target_call, 20);
+    stf::print_utils::printDecLeft(total_multi_targ_call_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  1_Target_Return:", 24);
-    stf::print_utils::printDecLeft(total_static_1_target_return, 24);
-    stf::print_utils::printDecLeft(total_1_targ_ret_instances, 24);
+    stf::print_utils::printLeft("  1_Target_Return:", 28);
+    stf::print_utils::printDecLeft(total_static_1_target_return, 20);
+    stf::print_utils::printDecLeft(total_1_targ_ret_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Multi_target_Return:", 24);
-    stf::print_utils::printDecLeft(total_static_multi_target_return, 24);
-    stf::print_utils::printDecLeft(total_multi_targ_ret_instances, 24);
+    stf::print_utils::printLeft("  Multi_target_Return:", 28);
+    stf::print_utils::printDecLeft(total_static_multi_target_return, 20);
+    stf::print_utils::printDecLeft(total_multi_targ_ret_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  1_Target_Jump:", 24);
-    stf::print_utils::printDecLeft(total_static_1_target_jump, 24);
-    stf::print_utils::printDecLeft(total_1_targ_jump_instances, 24);
+    stf::print_utils::printLeft("  1_Target_Jump:", 28);
+    stf::print_utils::printDecLeft(total_static_1_target_jump, 20);
+    stf::print_utils::printDecLeft(total_1_targ_jump_instances, 20);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Multi_Target_Jump:", 24);
-    stf::print_utils::printDecLeft(total_static_multi_target_jump, 24);
-    stf::print_utils::printDecLeft(total_multi_targ_jump_instances, 24);
+    stf::print_utils::printLeft("  Multi_Target_Jump:", 28);
+    stf::print_utils::printDecLeft(total_static_multi_target_jump, 20);
+    stf::print_utils::printDecLeft(total_multi_targ_jump_instances, 20);
     std::cout << std::endl;
 
     if (entropy_report) {
