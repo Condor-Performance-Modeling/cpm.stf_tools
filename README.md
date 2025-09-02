@@ -11,18 +11,18 @@ Install all packages needed to build [stf_lib](https://github.com/sparcians/stf_
 ## Building
 
 ```
-mkdir release
-cd release
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make
+cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" -S . -B ./release
+cmake --build ./release --target all -- -j$(nproc)
+
 ```
 Or for debug:
 ```
-mkdir debug
-cd debug
-cmake .. -DCMAKE_BUILD_TYPE=Debug
-make
+cmake -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles" -S . -B ./debug
+cmake --build ./debug --target all -- -j$(nproc)
 ```
+If you're using machine without Boost library at 1.78 or higher you can add `-DCMAKE_PREFIX_PATH=/data/tools/external_lib/libboost1.78` to cmake config command.
+Or pass different installation path for the library.
+
 Ensure you have cython installed on your machine, can be done easily using
 ```
 pip3 install cython

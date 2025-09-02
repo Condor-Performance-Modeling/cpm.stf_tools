@@ -15,11 +15,11 @@ set (STF_TOOLS_BASE ${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${STF_TOOLS_BASE}/include)
 set(STF_TOOLS_CMAKE_DIR ${STF_TOOLS_BASE}/cmake)
 set(STF_TOOLS_PATCHES_DIR ${STF_TOOLS_BASE}/patches)
-set(STF_LIB_CMAKE_DIR ${STF_TOOLS_BASE}/stf_lib/cmake)
+set(STF_LIB_CMAKE_DIR ${STF_TOOLS_BASE}/cpm.stf_lib/cmake)
 
 set(CMAKE_MODULE_PATH ${STF_TOOLS_CMAKE_DIR} ${STF_LIB_CMAKE_DIR} ${CMAKE_MODULE_PATH})
 
-if(NOT EXISTS ${STF_TOOLS_BASE}/stf_lib/.git)
+if(NOT EXISTS ${STF_TOOLS_BASE}/cpm.stf_lib/.git)
     message(FATAL_ERROR "stf_lib hasn't been checked out. Please run git submodule update --init --recursive")
 endif()
 
@@ -56,7 +56,7 @@ if(NOT DISABLE_STF_PYTHON_LIB)
     set(BUILD_STF_PYTHON_LIB ON)
 endif()
 
-add_subdirectory(stf_lib)
+add_subdirectory(cpm.stf_lib)
 
 include_directories(${STF_BASE}/stf-inc)
 
