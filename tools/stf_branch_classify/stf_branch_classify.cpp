@@ -1093,7 +1093,7 @@ int main(int argc, char** argv) {
     stf::print_utils::printDecLeft(total_1_targ_ret_instances, 20);
     stf::print_utils::printHex(max_1_target_ret_distance);
     std::cout << std::endl;
-    stf::print_utils::printLeft("  Multi_target_Return:", 28);
+    stf::print_utils::printLeft("  Multi_Target_Return:", 28);
     stf::print_utils::printDecLeft(total_static_multi_target_return, 20);
     stf::print_utils::printDecLeft(total_multi_targ_ret_instances, 20);
     stf::print_utils::printHex(max_multi_target_ret_distance);
