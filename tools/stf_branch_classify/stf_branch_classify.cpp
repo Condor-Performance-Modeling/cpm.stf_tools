@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
     bool skip_non_user = false;
     uint64_t target_range = 64;
     uint64_t btb_size = 0;
-    double limit_percent;
+    double limit_percent = 0.99;
     BranchType preceding_branch_type = BranchType::INVALID;
     uint64_t preceding_branch_pc = 0x0;
     uint64_t pre_preceding_branch_pc = 0x0;
@@ -215,19 +215,34 @@ int main(int argc, char** argv) {
     uint64_t total_cond_long_bkwd_instances = 0;
     uint64_t total_static_cond_long_fwd = 0;
     uint64_t total_cond_long_fwd_instances = 0;
+
     uint64_t total_static_1_target_call = 0;
-    uint64_t total_1_targ_call_instances = 0; 
+    uint64_t total_1_targ_call_instances = 0;
+    uint64_t max_1_target_call_distance = 0;
+
     uint64_t total_static_multi_target_call = 0;
     uint64_t total_multi_targ_call_instances = 0; 
+    uint64_t max_multi_target_call_distance = 0;
+    uint64_t max_multi_target_call_pages = 0;   
+
     uint64_t total_static_1_target_return = 0;
-    uint64_t total_1_targ_ret_instances = 0; 
+    uint64_t total_1_targ_ret_instances = 0;
+    uint64_t max_1_target_ret_distance = 0;
+
     uint64_t total_static_multi_target_return = 0;
     uint64_t total_multi_targ_ret_instances = 0;
+    uint64_t max_multi_target_ret_distance = 0;
+    uint64_t max_multi_target_ret_pages = 0;   
+
     uint64_t total_static_1_target_jump = 0;
     uint64_t total_1_targ_jump_instances = 0;
+    uint64_t max_1_target_jump_distance = 0;
+
     uint64_t total_static_multi_target_jump = 0;
-    uint64_t total_multi_targ_jump_instances = 0; 
-    
+    uint64_t total_multi_targ_jump_instances = 0;
+    uint64_t max_multi_target_jump_distance = 0;
+    uint64_t max_multi_target_jump_pages = 0;   
+
     try {
         processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, target_range, btb_size, history_length, limit_percent);
     }
@@ -506,7 +521,11 @@ int main(int argc, char** argv) {
         stf::print_utils::printSpaces(4);
 
         uint64_t max_distance = 0;
+        std::map<uint64_t, uint64_t> target_pages;
         for (const auto& [target,count] : branch_info.targets) {
+            uint64_t page_num = target >> 12;  // get MSBs for VM page #
+            target_pages[page_num]++;
+            // std::cout << "Target pages size: " << target_pages.size() << " page_num :" << page_num << std::endl;
             uint64_t distance = std::abs((long long)pc - (long long)target);
             max_distance = (distance > max_distance) ? distance : max_distance;
         }
@@ -625,26 +644,35 @@ int main(int argc, char** argv) {
                     case BranchType::CALL:
                         total_static_1_target_call++;
                         total_1_targ_call_instances += total;
+                        max_1_target_call_distance = std::max(max_1_target_call_distance, max_distance);
                         break;
                     case BranchType::M_CALL:
                         total_static_multi_target_call++;
                         total_multi_targ_call_instances += total;
+                        max_multi_target_call_distance = std::max(max_multi_target_call_distance, max_distance);
+                        max_multi_target_call_pages = std::max(max_multi_target_call_pages, target_pages.size());
                         break;
                     case BranchType::RETURN:
                         total_static_1_target_return++;
                         total_1_targ_ret_instances += total;
+                        max_1_target_ret_distance = std::max(max_1_target_ret_distance, max_distance);
                         break;
                     case BranchType::M_RET:
                         total_static_multi_target_return++;
                         total_multi_targ_ret_instances += total;
+                        max_multi_target_ret_distance = std::max(max_multi_target_ret_distance, max_distance);
+                        max_multi_target_ret_pages = std::max(max_multi_target_ret_pages, target_pages.size());
                         break;
                     case BranchType::JUMP:
                         total_static_1_target_jump++;
                         total_1_targ_jump_instances += total;
+                        max_1_target_jump_distance = std::max(max_1_target_jump_distance, max_distance);
                         break;
                     case BranchType::M_JUMP:
                         total_static_multi_target_jump++;
                         total_multi_targ_jump_instances += total;
+                        max_multi_target_jump_distance = std::max(max_multi_target_jump_distance, max_distance);
+                        max_multi_target_jump_pages = std::max(max_multi_target_jump_pages, target_pages.size());
                         break;
                     default: break;
                 }
@@ -966,7 +994,7 @@ int main(int argc, char** argv) {
                     first_line = false;
                 }
                 else {
-                    stf::print_utils::printSpaces(8*COLUMN_WIDTH);
+                    stf::print_utils::printSpaces(14*COLUMN_WIDTH+10);
                 }
                 stf::print_utils::printHex(target_pair.first);
                 stf::print_utils::printSpaces(4);
@@ -991,6 +1019,8 @@ int main(int argc, char** argv) {
     stf::print_utils::printLeft("Type & Sub-type", 28);
     stf::print_utils::printLeft("Unique_Static_PCs", 20);
     stf::print_utils::printLeft("Dynamic_Instances", 20);
+    stf::print_utils::printLeft("Max Target Dist", 20);
+    stf::print_utils::printLeft("Max 4K Pages / Multi Target", 20);
     std::cout << std::endl;
     std::cout << "Conditional" << std::endl;
     stf::print_utils::printLeft("  Always_Taken:", 28);
@@ -1047,26 +1077,40 @@ int main(int argc, char** argv) {
     stf::print_utils::printLeft("  1_Target_Call:", 28);
     stf::print_utils::printDecLeft(total_static_1_target_call, 20);
     stf::print_utils::printDecLeft(total_1_targ_call_instances, 20);
+    stf::print_utils::printHex(max_1_target_call_distance);
+   
     std::cout << std::endl;
     stf::print_utils::printLeft("  Multi_Target_Call:", 28);
     stf::print_utils::printDecLeft(total_static_multi_target_call, 20);
     stf::print_utils::printDecLeft(total_multi_targ_call_instances, 20);
+    stf::print_utils::printHex(max_multi_target_call_distance);
+    stf::print_utils::printSpaces(4);
+    stf::print_utils::printDecLeft(max_multi_target_call_pages, 20);
     std::cout << std::endl;
+
     stf::print_utils::printLeft("  1_Target_Return:", 28);
     stf::print_utils::printDecLeft(total_static_1_target_return, 20);
     stf::print_utils::printDecLeft(total_1_targ_ret_instances, 20);
+    stf::print_utils::printHex(max_1_target_ret_distance);
     std::cout << std::endl;
     stf::print_utils::printLeft("  Multi_target_Return:", 28);
     stf::print_utils::printDecLeft(total_static_multi_target_return, 20);
     stf::print_utils::printDecLeft(total_multi_targ_ret_instances, 20);
+    stf::print_utils::printHex(max_multi_target_ret_distance);
+    stf::print_utils::printSpaces(4);
+    stf::print_utils::printDecLeft(max_multi_target_ret_pages, 20);
     std::cout << std::endl;
     stf::print_utils::printLeft("  1_Target_Jump:", 28);
     stf::print_utils::printDecLeft(total_static_1_target_jump, 20);
     stf::print_utils::printDecLeft(total_1_targ_jump_instances, 20);
+    stf::print_utils::printHex(max_1_target_jump_distance);
     std::cout << std::endl;
     stf::print_utils::printLeft("  Multi_Target_Jump:", 28);
     stf::print_utils::printDecLeft(total_static_multi_target_jump, 20);
     stf::print_utils::printDecLeft(total_multi_targ_jump_instances, 20);
+    stf::print_utils::printHex(max_multi_target_jump_distance);
+    stf::print_utils::printSpaces(4);
+    stf::print_utils::printDecLeft(max_multi_target_jump_pages, 20);
     std::cout << std::endl;
 
     if (entropy_report) {
