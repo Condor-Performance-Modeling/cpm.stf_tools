@@ -203,6 +203,8 @@ int main(int argc, char** argv) {
     uint64_t total_cond_containloop_long_instances = 0;
     uint64_t total_static_cond_containloop_short = 0;
     uint64_t total_cond_containloop_short_instances = 0;
+    uint64_t total_static_cond_osc = 0;
+    uint64_t total_cond_osc_instances = 0;
     uint64_t total_static_cond_m1t = 0;
     uint64_t total_cond_m1t_instances = 0;
     uint64_t total_static_cond_m1n = 0;
@@ -572,6 +574,13 @@ int main(int argc, char** argv) {
                                 total_static_cond_containloop_short++;
                                 total_cond_containloop_short_instances += total;
                             };                            
+                        };
+                    }
+                    else if ((branch_info.max_sequential_taken == 1) && (branch_info.max_sequential_not_taken == 1)) {
+                        stf::print_utils::printLeft(" COSC", 12);
+                        if (!limit_reached) {
+                            total_static_cond_osc++;
+                            total_cond_osc_instances += total;
                         };
                     }
                     else if ((branch_info.max_sequential_taken == 1) && (branch_info.max_sequential_not_taken > 1)) {
@@ -1016,11 +1025,11 @@ int main(int argc, char** argv) {
     std::cout << "Limit: " << (limit_percent * 100) << "%   Limit instances count of all types: " << limit;
     std::cout << "  Static branch PC Rank at limit: " << limit_rank << std::endl << std::endl;
     std::cout << "Branch Type & Behavior Category Totals prior to limit. Short/Long Threshold: " << target_range << std::endl;
-    stf::print_utils::printLeft("Type & Sub-type", 28);
+    stf::print_utils::printLeft("Type_&_Sub-type", 28);
     stf::print_utils::printLeft("Unique_Static_PCs", 20);
     stf::print_utils::printLeft("Dynamic_Instances", 20);
-    stf::print_utils::printLeft("Max Target Dist", 20);
-    stf::print_utils::printLeft("Max 4K Pages / Multi Target", 20);
+    stf::print_utils::printLeft("Max_Target_Dist", 20);
+    stf::print_utils::printLeft("Max_4K_Pages_/_Multi_Target", 20);
     std::cout << std::endl;
     std::cout << "Conditional" << std::endl;
     stf::print_utils::printLeft("  Always_Taken:", 28);
@@ -1042,6 +1051,10 @@ int main(int argc, char** argv) {
     stf::print_utils::printLeft("  Long_Contains_NTs_Loops:", 28);
     stf::print_utils::printDecLeft(total_static_cond_containloop_long, 20);
     stf::print_utils::printDecLeft(total_cond_containloop_long_instances, 20);
+    std::cout << std::endl;
+    stf::print_utils::printLeft("  Oscillating:", 28);
+    stf::print_utils::printDecLeft(total_static_cond_osc, 20);
+    stf::print_utils::printDecLeft(total_cond_osc_instances, 20);
     std::cout << std::endl;
     stf::print_utils::printLeft("  Max_Seq_1_Taken:", 28);
     stf::print_utils::printDecLeft(total_static_cond_m1t, 20);
