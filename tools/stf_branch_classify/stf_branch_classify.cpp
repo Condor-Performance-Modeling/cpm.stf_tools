@@ -807,8 +807,8 @@ int main(int argc, char** argv) {
             stf::print_utils::printDecLeft(branch_info.indirect_precedents.size(), 12);
     
         if(branch_info.repeated || branch_info.repeated_taken) { 
-            if (branch_info.repeated_taken) stf::print_utils::printLeft("C ");  // 'C' for repeat Contains non-self not-takens
-            else stf::print_utils::printLeft("s ");  // 'S' for self repeat i.e., no intervening not-taken branches
+            if (branch_info.repeated_taken) stf::print_utils::printLeft("C");  // 'C' for repeat Contains non-self not-takens
+            else stf::print_utils::printLeft("s");  // 'S' for self repeat i.e., no intervening not-taken branches
             if (branch_info.direction==Direction::FORWARD) stf::print_utils::printLeft("Y->", 10);
             else if (branch_info.direction==Direction::BACKWARD) stf::print_utils::printLeft("<-Y", 10);
             else stf::print_utils::printLeft("<Y>", 10);
@@ -1283,7 +1283,7 @@ int main(int argc, char** argv) {
             std::cout << std::endl;
         }
 
-        std::cout << std::endl << "Total conditional branches prior to limit including always taken 0 entropy CATs: " << cond_before_limit << std::endl << std::endl;
+        std::cout << std::endl << "Total conditional branches prior to limit including always taken 0 entropy Cond Always Takens: " << cond_before_limit << std::endl << std::endl;
 
         stf::print_utils::printLeft("Max entropy branches", 38);
         std::cout << "MaxEntropy \tRank \tPC" << std::endl;
@@ -1293,7 +1293,7 @@ int main(int argc, char** argv) {
         std::cout << max_glo_dir_entropy << std::dec << " \t\t" << max_glo_dir_ent_rank << " \t" << std::hex << max_glo_dir_ent_pc << std::endl;
         stf::print_utils::printLeft("Conditional Only Direction History:", 40);
         std::cout << max_cond_entropy << std::dec << " \t\t" << max_cond_ent_rank << " \t" << std::hex << max_cond_ent_pc << std::endl;     
-        stf::print_utils::printLeft("Cond Only No CAT Direction History:", 40);
+        stf::print_utils::printLeft("Cond Only NoATkn Direction History:", 40);
         std::cout << max_cnat_entropy << std::dec << " \t\t" << max_cnat_ent_rank << " \t" << std::hex << max_cnat_ent_pc << std::endl;     
         stf::print_utils::printLeft("PC Path History:", 40);
         std::cout << max_glo_path_entropy << std::dec << " \t\t" << max_glo_path_ent_rank << " \t" << std::hex << max_glo_path_ent_pc << std::endl;
@@ -1302,7 +1302,7 @@ int main(int argc, char** argv) {
         stf::print_utils::printLeft("Conditional FwdBkwd History:", 40);
         std::cout << max_fwbw_entropy << std::dec << " \t\t" << max_fwbw_ent_rank << " \t" << std::hex << max_fwbw_ent_pc << std::endl << std::endl << std::endl;        
 
-        std::cout << "These entropy histgrams only contain conditional branches that were both taken and not-taken - they do not include CATs or NTs which have 0 entropy." << std::endl;
+        std::cout << "These entropy histgrams only contain conditional branches that were both taken and not-taken - they do not include CondAlwaysTakens or NTs which have 0 entropy." << std::endl;
         std::cout << std::dec << "Entropy Deciles\t0<0.1\t0.1<0.2\t0.2<0.3\t0.3<0.4\t0.4<0.5\t0.5<0.6\t0.6<0.7\t0.7<0.8\t0.8<0.9\t>=0.9" << std::endl;
         std::cout << "Local :\t\t";
         for (auto dec_count : local_entropy_hist) std::cout << dec_count << '\t';
@@ -1313,7 +1313,7 @@ int main(int argc, char** argv) {
         std::cout << "Conditional :\t";
         for (auto dec_count : cond_entropy_hist) std::cout << dec_count << '\t';
         std::cout << std::endl;
-        std::cout << "Cond No CAT :\t";
+        std::cout << "Cond NoATkn :\t";
         for (auto dec_count : cnat_entropy_hist) std::cout << dec_count << '\t';
         std::cout << std::endl;
         std::cout << "Global Path :\t";
