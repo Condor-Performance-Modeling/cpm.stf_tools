@@ -20,6 +20,8 @@ void processCommandLine(int argc,
                         uint64_t& target_range,
                         uint64_t& btb_size,
                         uint64_t& history_length,
+                        uint64_t& path_footprint,
+                        uint64_t& path_shift,
                         double& limit_percent) {
     trace_tools::CommandLineParser parser("stf_branch_classify");
     parser.addFlag('v', "verbose mode (prints indirect branch targets)");
@@ -29,9 +31,13 @@ void processCommandLine(int argc,
     parser.addFlag('r', "target_range", "Branch PC to Target range used to categorize conditional branches as short or long range. Default > 64 is long range");
     parser.addFlag('b', "btb_size", "report BTB of size btb_size per index branch PC allocations & hits. btb_size must be power of 2. Maxx allowed btb_size = 131072");
     parser.addFlag('e', "history_length", "report branch entropies per history type: local, all TN, conditional TN, PC path, Target path. History length in bits, must be < 64");
+    parser.addFlag('f', "path_footprint", "The amount of PC or Target LSBs used per branch to form path histories. Must be < 64");    
+    parser.addFlag('g', "path_shift", "The amount of bits the PC or Target path is shifted per branch to form path histories. Must be < 64");    
     parser.addFlag('l', "limit_percent", "percentage (0.0 < n < 1.0) of all dynamic branch instances less not-taken prefix instances that will be included in summaries");
     parser.addPositionalArgument("trace", "trace in STF format");
+
     parser.parseArguments(argc, argv);
+
     verbose = parser.hasArgument('v');
     only_taken = parser.hasArgument('t');
     only_dynamic = parser.hasArgument('d');
@@ -39,8 +45,9 @@ void processCommandLine(int argc,
     parser.getArgumentValue('r', target_range);
     parser.getArgumentValue('b', btb_size);
     parser.getArgumentValue('e', history_length);
+    parser.getArgumentValue('f', path_footprint);
+    parser.getArgumentValue('g', path_shift);
     parser.getArgumentValue('l', limit_percent);
-
     parser.getPositionalArgument(0, trace);
 }
 
@@ -189,7 +196,8 @@ int main(int argc, char** argv) {
     uint64_t preceding_taken_branch_pc = 0x0;
     uint64_t preceding_indirect_branch_pc = 0x0;
     uint64_t history_length = 0;
-    //uint64_t history_mask = (1 << history_length) - 1;
+    uint64_t path_footprint = 0;
+    uint64_t path_shift = 1;
     uint64_t all_total = 0;
     uint64_t all_total_prefix = 0;
     uint64_t running_total = 0;
@@ -248,7 +256,7 @@ int main(int argc, char** argv) {
     uint64_t max_multi_target_jump_pages = 0;   
 
     try {
-        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, target_range, btb_size, history_length, limit_percent);
+        processCommandLine(argc, argv, trace, verbose, only_taken, only_dynamic, skip_non_user, target_range, btb_size, history_length, path_footprint, path_shift, limit_percent);
     }
     catch(const trace_tools::CommandLineParser::EarlyExitException& e) {
         std::cerr << e.what() << std::endl;
@@ -273,7 +281,8 @@ int main(int argc, char** argv) {
     uint64_t cond_fwbw_history = 0;
     history_length = std::min(history_length, (uint64_t)63);
     bool entropy_report = (history_length > 0);
-    uint64_t history_mask = (1 << history_length) - 1;  // this might fail at history_length=64
+    uint64_t history_mask = (1ULL << history_length) - 1;  // this might fail at history_length=64
+    uint64_t path_mask = (path_footprint == 0) ? history_mask : (1ULL << path_footprint) - 1;
 
     for(const auto& branch: reader) {
         auto& branch_info = branch_counts[branch.getPC()];
@@ -403,8 +412,8 @@ int main(int argc, char** argv) {
         }
         branch_info.local_dir_history = (branch_info.local_dir_history<<1) | (is_taken & 0x1);
         global_dir_history = (global_dir_history<<1) | (is_taken & 0x1);
-        global_path_history = (global_path_history<<1) ^ ((branch.getPC()>>1) & history_mask);
-        global_targ_history = (global_targ_history<<1) ^ ((branch.getTargetPC()>>1) & history_mask);
+        global_path_history = (global_path_history<<path_shift) ^ ((branch.getPC()>>1) & path_mask);
+        global_targ_history = (global_targ_history<<path_shift) ^ ((branch.getTargetPC()>>1) & path_mask);
 
         all_total++;
     }
@@ -809,9 +818,9 @@ int main(int argc, char** argv) {
         if(branch_info.repeated || branch_info.repeated_taken) { 
             if (branch_info.repeated_taken) stf::print_utils::printLeft("C");  // 'C' for repeat Contains non-self not-takens
             else stf::print_utils::printLeft("s");  // 'S' for self repeat i.e., no intervening not-taken branches
-            if (branch_info.direction==Direction::FORWARD) stf::print_utils::printLeft("Y->", 10);
-            else if (branch_info.direction==Direction::BACKWARD) stf::print_utils::printLeft("<-Y", 10);
-            else stf::print_utils::printLeft("<Y>", 10);
+            if (branch_info.direction==Direction::FORWARD) stf::print_utils::printLeft("Y->", 11);
+            else if (branch_info.direction==Direction::BACKWARD) stf::print_utils::printLeft("<-Y", 11);
+            else stf::print_utils::printLeft("<Y>", 11);
         }
         else {
             stf::print_utils::printLeft("   n", 12);
