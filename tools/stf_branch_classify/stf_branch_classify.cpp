@@ -406,15 +406,19 @@ int main(int argc, char** argv) {
                 cond_dir_history = (cond_dir_history<<1) | (is_taken & 0x1);
                 cond_fwbw_history = (cond_fwbw_history<<1) | (branch.isBackwards() & 0x1);
             }
-            if (branch_info.not_taken > branch_info.not_taken_prefix) {  // if not always taken
+            if (branch_info.not_taken > branch_info.not_taken_prefix) {  // if neither never taken nor always taken
                 cnat_dir_history = (cnat_dir_history<<1) | (is_taken & 0x1);
             }
         }
+
         branch_info.local_dir_history = (branch_info.local_dir_history<<1) | (is_taken & 0x1);
         global_dir_history = (global_dir_history<<1) | (is_taken & 0x1);
-        global_path_history = (global_path_history<<path_shift) ^ ((branch.getPC()>>1) & path_mask);
-        global_targ_history = (global_targ_history<<path_shift) ^ ((branch.getTargetPC()>>1) & path_mask);
 
+        if ((branch_info.type != BranchType::CONDITIONAL)
+            || (branch_info.not_taken > branch_info.not_taken_prefix)) {
+            global_path_history = (global_path_history<<path_shift) ^ ((branch.getPC()>>1) & path_mask);
+            global_targ_history = (global_targ_history<<path_shift) ^ ((branch.getTargetPC()>>1) & path_mask);
+        }
         all_total++;
     }
 
@@ -433,7 +437,7 @@ int main(int argc, char** argv) {
     uint64_t limit = int(limit_percent*(double)(all_total-all_total_prefix));
     std::cout << "  Limit for summary of instances after prefix: " << limit_percent << " Limit instance count: " << limit;
     std::cout << " Target long range threshold: " << target_range;
-    if (entropy_report) std::cout << " Entropy histories length: " << history_length;
+    if (entropy_report) std::cout << " Entropy histories length: " << history_length << " Path footprint: " << path_footprint << " Path shift: " << path_shift;
     if (btb_size > 0) std::cout << " BTB Size: " << btb_size;
     std::cout << std::endl;
     bool limit_reached = false;
