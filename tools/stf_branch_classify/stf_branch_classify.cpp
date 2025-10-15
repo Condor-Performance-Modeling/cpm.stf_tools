@@ -170,6 +170,7 @@ struct BranchInfo {
     std::map<uint64_t, DualCounter> cnat_dir_histories;
     std::map<uint64_t, DualCounter> global_path_histories;
     std::map<uint64_t, DualCounter> global_targ_histories;
+    std::map<uint64_t, DualCounter> global_p_t_histories;
     std::map<uint64_t, DualCounter> cond_fwbw_histories;
     bool previous_taken = false;
     bool stable_seq_taken = true;
@@ -278,6 +279,7 @@ int main(int argc, char** argv) {
     uint64_t cnat_dir_history = 0;
     uint64_t global_path_history = 0;
     uint64_t global_targ_history = 0;
+    uint64_t global_p_t_history = 0;
     uint64_t cond_fwbw_history = 0;
     history_length = std::min(history_length, (uint64_t)63);
     bool entropy_report = (history_length > 0);
@@ -391,6 +393,7 @@ int main(int argc, char** argv) {
                 branch_info.cnat_dir_histories[(cnat_dir_history & history_mask)].taken++;
                 branch_info.global_path_histories[(global_path_history & history_mask)].taken++;
                 branch_info.global_targ_histories[(global_targ_history & history_mask)].taken++;
+                branch_info.global_p_t_histories[(global_p_t_history & history_mask)].taken++;
                 branch_info.cond_fwbw_histories[(cond_fwbw_history & history_mask)].taken++;
             }
             else {
@@ -400,6 +403,7 @@ int main(int argc, char** argv) {
                 branch_info.cnat_dir_histories[(cnat_dir_history & history_mask)].not_taken++;
                 branch_info.global_path_histories[(global_path_history & history_mask)].not_taken++;
                 branch_info.global_targ_histories[(global_targ_history & history_mask)].not_taken++;
+                branch_info.global_p_t_histories[(global_p_t_history & history_mask)].not_taken++;
                 branch_info.cond_fwbw_histories[(cond_fwbw_history & history_mask)].not_taken++;
             }
             if (branch_info.taken > 0) {   // ignore not yet taken conditional branches
@@ -418,6 +422,7 @@ int main(int argc, char** argv) {
             || (branch_info.not_taken > branch_info.not_taken_prefix)) {
             global_path_history = (global_path_history<<path_shift) ^ ((branch.getPC()>>1) & path_mask);
             global_targ_history = (global_targ_history<<path_shift) ^ ((branch.getTargetPC()>>1) & path_mask);
+            global_p_t_history = (global_targ_history<<path_shift) ^ (((branch.getPC() ^ branch.getTargetPC()) >> 1) & path_mask);
         }
         all_total++;
     }
@@ -485,6 +490,9 @@ int main(int argc, char** argv) {
         stf::print_utils::printLeft("Glo_TgP_Hists", 14);
         stf::print_utils::printLeft("Glo_TgH_Mixed", 14);
         stf::print_utils::printLeft("Glo_Tar_Entropy", COLUMN_WIDTH);
+        stf::print_utils::printLeft("Glo_P&T_Hists", 14);
+        stf::print_utils::printLeft("Glo_P&T_Mixed", 14);
+        stf::print_utils::printLeft("Glo_P&T_Entropy", COLUMN_WIDTH);
         stf::print_utils::printLeft("Cnd_FB_Hists", 14);
         stf::print_utils::printLeft("Cnd_FB_Mixed", 14);
         stf::print_utils::printLeft("Cnd_FB_Entropy", COLUMN_WIDTH); 
@@ -503,6 +511,7 @@ int main(int argc, char** argv) {
     double max_cnat_entropy = 0.0;
     double max_glo_path_entropy = 0.0;
     double max_glo_targ_entropy = 0.0;
+    double max_glo_p_t_entropy = 0.0;
     double max_fwbw_entropy = 0.0;
 
     uint64_t max_local_ent_rank = 0;
@@ -511,6 +520,7 @@ int main(int argc, char** argv) {
     uint64_t max_cnat_ent_rank = 0;
     uint64_t max_glo_path_ent_rank = 0;
     uint64_t max_glo_targ_ent_rank = 0;
+    uint64_t max_glo_p_t_ent_rank = 0;
     uint64_t max_fwbw_ent_rank = 0;
 
     uint64_t max_local_ent_pc = 0;
@@ -519,6 +529,7 @@ int main(int argc, char** argv) {
     uint64_t max_cnat_ent_pc = 0;
     uint64_t max_glo_path_ent_pc = 0;
     uint64_t max_glo_targ_ent_pc = 0;
+    uint64_t max_glo_p_t_ent_pc = 0;
     uint64_t max_fwbw_ent_pc = 0;
     
 
@@ -528,6 +539,7 @@ int main(int argc, char** argv) {
     std::map<uint64_t, uint64_t> num_cnat_histories_hist;
     std::map<uint64_t, uint64_t> num_path_histories_hist;
     std::map<uint64_t, uint64_t> num_targ_histories_hist;
+    std::map<uint64_t, uint64_t> num_p_t_histories_hist;
     std::map<uint64_t, uint64_t> num_fwbw_histories_hist;
 
     std::array<uint64_t, 10> local_entropy_hist {};
@@ -536,6 +548,7 @@ int main(int argc, char** argv) {
     std::array<uint64_t, 10> cnat_entropy_hist {};
     std::array<uint64_t, 10> glo_path_entropy_hist {};
     std::array<uint64_t, 10> glo_targ_entropy_hist {};
+    std::array<uint64_t, 10> glo_p_t_entropy_hist {};
     std::array<uint64_t, 10> fwbw_entropy_hist {};
 
     for(const auto& branch: summary) {
@@ -1047,6 +1060,34 @@ int main(int argc, char** argv) {
                 std::cout << avg_branch_entropy;
                 stf::print_utils::printSpaces(COLUMN_WIDTH-6);
 
+                stf::print_utils::printDecLeft(branch_info.global_p_t_histories.size(), 14);
+                num_p_t_histories_hist[branch_info.global_p_t_histories.size()]++;
+                mixed_hists = 0;
+                branch_entropy_sum = 0;
+                for (const auto& pair : branch_info.global_p_t_histories) {
+
+                    if ((pair.second.taken > 0) && (pair.second.not_taken > 0)) {
+                        mixed_hists++;
+                    }
+                    double hist_instances = (double)(pair.second.not_taken + pair.second.taken);
+                    double prob_taken = (double)pair.second.taken / hist_instances;
+                    double hist_entropy = 2.0 * std::min(prob_taken, (1 - prob_taken));  // From: De Pestel et.al. 2017
+                    branch_entropy_sum += hist_instances * hist_entropy;
+                }
+                avg_branch_entropy = std::max(branch_entropy_sum/(double)(taken+not_taken), 0.0);
+                if (!limit_reached) {
+                    uint64_t decile = std::min(static_cast<int>(avg_branch_entropy*10), 9);  // min guards against array bound
+                    glo_p_t_entropy_hist[decile]++;
+                    if (avg_branch_entropy > max_glo_p_t_entropy) {
+                        max_glo_p_t_entropy = avg_branch_entropy;
+                        max_glo_p_t_ent_rank = rank;
+                        max_glo_p_t_ent_pc = pc;
+                    }
+                }
+                stf::print_utils::printDecLeft(mixed_hists, 14);
+                std::cout << avg_branch_entropy;
+                stf::print_utils::printSpaces(COLUMN_WIDTH-6);
+
                 stf::print_utils::printDecLeft(branch_info.cond_fwbw_histories.size(), 14);
                 num_fwbw_histories_hist[branch_info.cond_fwbw_histories.size()]++;
                 mixed_hists = 0;
@@ -1078,6 +1119,9 @@ int main(int argc, char** argv) {
             }
             else {
                 stf::print_utils::printLeft("-", 12);
+                stf::print_utils::printLeft("-", 14);
+                stf::print_utils::printLeft("-", COLUMN_WIDTH);
+                stf::print_utils::printLeft("-", 14);
                 stf::print_utils::printLeft("-", 14);
                 stf::print_utils::printLeft("-", COLUMN_WIDTH);
                 stf::print_utils::printLeft("-", 14);
@@ -1287,6 +1331,15 @@ int main(int argc, char** argv) {
             std::cout << std::endl;
         }
         std::cout << std::endl;
+        stf::print_utils::printLeft("# Unique Preceding Global PC xor Target Path Histories", 55);
+        stf::print_utils::printLeft("# Conditional Branches", 25);
+        std::cout << std::endl;
+        for (const auto& pair : num_p_t_histories_hist) {
+            stf::print_utils::printDecLeft(pair.first, 55);
+            stf::print_utils::printDecLeft(pair.second, 25);
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
         stf::print_utils::printLeft("# Unique Preceding Fwd/Bkwd Histories", 55);
         stf::print_utils::printLeft("# Conditional Branches", 25);
         std::cout << std::endl;
@@ -1312,6 +1365,8 @@ int main(int argc, char** argv) {
         std::cout << max_glo_path_entropy << std::dec << " \t\t" << max_glo_path_ent_rank << " \t" << std::hex << max_glo_path_ent_pc << std::endl;
         stf::print_utils::printLeft("Target Path History:", 40);
         std::cout << max_glo_targ_entropy << std::dec << " \t\t" << max_glo_targ_ent_rank << " \t" << std::hex << max_glo_targ_ent_pc << std::endl;
+        stf::print_utils::printLeft("Mixed PCxorTarg Path History:", 40);
+        std::cout << max_glo_p_t_entropy << std::dec << " \t\t" << max_glo_p_t_ent_rank << " \t" << std::hex << max_glo_p_t_ent_pc << std::endl;
         stf::print_utils::printLeft("Conditional FwdBkwd History:", 40);
         std::cout << max_fwbw_entropy << std::dec << " \t\t" << max_fwbw_ent_rank << " \t" << std::hex << max_fwbw_ent_pc << std::endl << std::endl << std::endl;        
 
@@ -1334,6 +1389,9 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
         std::cout << "Global Target :\t";
         for (auto dec_count : glo_targ_entropy_hist) std::cout << dec_count << '\t';
+        std::cout << std::endl;
+        std::cout << "Global PxorT :\t";
+        for (auto dec_count : glo_p_t_entropy_hist) std::cout << dec_count << '\t';
         std::cout << std::endl;
         std::cout << "Cond Fwd/Bkwd :\t";
         for (auto dec_count : fwbw_entropy_hist) std::cout << dec_count << '\t';
